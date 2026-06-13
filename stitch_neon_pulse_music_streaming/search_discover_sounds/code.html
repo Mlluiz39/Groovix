@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Sonic Portal - Search</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&amp;family=Hanken+Grotesk:wght@400;500;600&amp;family=Geist:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-container-high": "#222a3a",
+                        "on-background": "#dae2f8",
+                        "on-tertiary": "#68000f",
+                        "secondary-fixed": "#e9ddff",
+                        "on-secondary-fixed-variant": "#5516be",
+                        "background": "#0a1322",
+                        "error-container": "#93000a",
+                        "surface-bright": "#31394a",
+                        "on-error": "#690005",
+                        "secondary": "#d0bcff",
+                        "surface-container-low": "#131c2b",
+                        "surface-container": "#17202f",
+                        "tertiary-fixed-dim": "#ffb3b0",
+                        "inverse-on-surface": "#283141",
+                        "on-primary-container": "#00626e",
+                        "surface-dim": "#0a1322",
+                        "inverse-primary": "#006875",
+                        "surface": "#0a1322",
+                        "on-primary-fixed": "#001f24",
+                        "surface-container-highest": "#2c3545",
+                        "on-surface-variant": "#bac9cc",
+                        "primary": "#c3f5ff",
+                        "error": "#ffb4ab",
+                        "on-secondary-container": "#c4abff",
+                        "on-tertiary-container": "#a6292f",
+                        "on-secondary-fixed": "#23005c",
+                        "primary-container": "#00e5ff",
+                        "on-primary-fixed-variant": "#004f58",
+                        "primary-fixed": "#9cf0ff",
+                        "on-tertiary-fixed": "#410006",
+                        "outline": "#849396",
+                        "surface-container-lowest": "#060e1d",
+                        "on-tertiary-fixed-variant": "#8c1520",
+                        "on-error-container": "#ffdad6",
+                        "secondary-fixed-dim": "#d0bcff",
+                        "secondary-container": "#571bc1",
+                        "on-primary": "#00363d",
+                        "surface-variant": "#2c3545",
+                        "surface-tint": "#00daf3",
+                        "on-surface": "#dae2f8",
+                        "primary-fixed-dim": "#00daf3",
+                        "tertiary-container": "#ffc1be",
+                        "tertiary": "#ffe7e5",
+                        "tertiary-fixed": "#ffdad8",
+                        "outline-variant": "#3b494c",
+                        "inverse-surface": "#dae2f8",
+                        "on-secondary": "#3c0091"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "1rem",
+                        "lg": "2rem",
+                        "xl": "3rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "gutter-md": "16px",
+                        "section-gap": "40px",
+                        "stack-unit": "8px",
+                        "container-margin": "24px"
+                    },
+                    "fontFamily": {
+                        "display-lg": ["Sora"],
+                        "body-lg": ["Hanken Grotesk"],
+                        "headline-lg": ["Sora"],
+                        "label-sm": ["Geist"],
+                        "title-md": ["Sora"],
+                        "headline-lg-mobile": ["Sora"],
+                        "body-md": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "label-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0.1em", "fontWeight": "600" }],
+                        "title-md": ["20px", { "lineHeight": "28px", "fontWeight": "500" }],
+                        "headline-lg-mobile": ["28px", { "lineHeight": "36px", "fontWeight": "600" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .glass-card {
+            background: rgba(34, 42, 58, 0.6);
+            backdrop-filter: blur(32px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .neon-glow-primary {
+            box-shadow: 0 0 15px rgba(0, 229, 255, 0.4);
+        }
+        .text-gradient {
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        /* Custom Scrollbar for horizontal scrolling areas */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface min-h-screen pb-32 font-sans selection:bg-primary-container selection:text-on-primary-container">
+<!-- Top App Bar (Mobile) -->
+<header class="w-full top-0 sticky backdrop-blur-xl bg-surface/30 z-50 shadow-none md:hidden">
+<div class="flex justify-between items-center px-container-margin py-stack-unit w-full z-50">
+<button class="text-on-surface-variant hover:opacity-80 transition-opacity active:scale-95 duration-200">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">menu</span>
+</button>
+<h1 class="font-display-lg text-headline-lg-mobile bg-gradient-to-r from-primary-container to-secondary text-transparent bg-clip-text uppercase italic">SONIC PORTAL</h1>
+<button class="w-10 h-10 rounded-full overflow-hidden border border-white/10 hover:opacity-80 transition-opacity active:scale-95 duration-200">
+<img alt="User profile" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDuvq5-fpMpW-i0OCfTayTIi2pZXYvBjsJ2gCRucDadT_E613jHvkaGD28MZUbhegGzlpktDOIrmXJEYHHt_25tAjjFzWv3jV0KbliEfEDMomgK5vrF0RUnRynATIzNNYh-GOEf0jt-OGZ2qgg8Y4-9AfgooX-mKzuW4xwrfhhjrqz65gSFm0h2c2CsdpEkkjWl3U45JlhFyUM7bgJfMJD1Iw4ud_P5tQWPSfEkX_DO8EGpV0Zb6FEasfPh4R77fjiHo1GRyXMjgu4"/>
+</button>
+</div>
+</header>
+<main class="px-container-margin pt-section-gap space-y-section-gap">
+<!-- Search Input -->
+<section>
+<div class="relative w-full group">
+<div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+<span class="material-symbols-outlined text-primary-fixed-dim">search</span>
+</div>
+<input class="w-full bg-surface-container-high rounded-full py-4 pl-12 pr-4 text-on-surface placeholder:text-on-surface-variant border border-white/5 focus:border-primary-container focus:ring-1 focus:ring-primary-container focus:outline-none transition-all neon-glow-primary shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)] font-body-md text-body-md" placeholder="Artists, songs, or genres..." type="text"/>
+<div class="absolute inset-y-0 right-0 pr-4 flex items-center">
+<button class="text-on-surface-variant hover:text-primary-fixed-dim transition-colors">
+<span class="material-symbols-outlined">mic</span>
+</button>
+</div>
+</div>
+</section>
+<!-- Recent Searches -->
+<section>
+<div class="flex justify-between items-center mb-gutter-md">
+<h2 class="font-title-md text-title-md text-on-surface">Recent Searches</h2>
+<button class="font-label-sm text-label-sm text-primary-fixed-dim hover:text-primary transition-colors">Clear</button>
+</div>
+<div class="flex flex-wrap gap-stack-unit">
+<button class="glass-card rounded-full px-4 py-2 flex items-center gap-2 hover:bg-white/10 transition-colors">
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant">history</span>
+<span class="font-body-md text-[14px]">Neon Genesis</span>
+</button>
+<button class="glass-card rounded-full px-4 py-2 flex items-center gap-2 hover:bg-white/10 transition-colors">
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant">history</span>
+<span class="font-body-md text-[14px]">Synthwave 2084</span>
+</button>
+<button class="glass-card rounded-full px-4 py-2 flex items-center gap-2 hover:bg-white/10 transition-colors">
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant">history</span>
+<span class="font-body-md text-[14px]">Cyber Grind</span>
+</button>
+</div>
+</section>
+<!-- Trending Artists -->
+<section>
+<h2 class="font-title-md text-title-md text-on-surface mb-gutter-md">Trending Entities</h2>
+<div class="flex overflow-x-auto no-scrollbar gap-gutter-md pb-4 -mx-container-margin px-container-margin">
+<!-- Artist 1 -->
+<div class="flex flex-col items-center gap-2 min-w-[80px]">
+<div class="w-20 h-20 rounded-full p-1 bg-gradient-to-tr from-primary-container to-secondary">
+<div class="w-full h-full rounded-full overflow-hidden glass-card">
+<img class="w-full h-full object-cover mix-blend-luminosity hover:mix-blend-normal transition-all duration-300" data-alt="A striking digital portrait of a futuristic musician with glowing neon circuitry integrated into their skin, set against a deep navy cyberpunk background. The lighting is high-contrast, featuring electric cyan and neon purple rim lights that emphasize the high-end, immersive aesthetic. The overall mood is sophisticated and technologically advanced, fitting a premium music streaming experience." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAjVL5pz2SuF3ECfmhgXsvd0SNR5n_k6ZbFO8quGmCb1hq6ZCSC0L-9wvfz9Zt1VTpff__GcM8WFSsos2ztdTXRoYXK72jBzGIppeO0o0dwflEfgvFlF5p1uRmmYKC1cvZgr5sRgI5IB7gIdAk0yNt4Ra64ec1nvSuAFhLwFEp8rbUqfAtK98kQpYBwqtpmvF0kR_6h-srDC38y9dhTwCj6FUKvQYbtOk_HTELEz4-kAM6rVD1jGgeMONr2E6S_pdLh3KGKLe9-nIQ"/>
+</div>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface text-center truncate w-full">V0ID</span>
+</div>
+<!-- Artist 2 -->
+<div class="flex flex-col items-center gap-2 min-w-[80px]">
+<div class="w-20 h-20 rounded-full overflow-hidden border border-white/20 relative group">
+<div class="absolute inset-0 bg-primary-container/20 opacity-0 group-hover:opacity-100 transition-opacity z-10 rounded-full"></div>
+<img class="w-full h-full object-cover" data-alt="A moody, high-end photograph of a DJ performing at a futuristic underground club. The scene is bathed in deep blues and intense magenta lasers cutting through atmospheric fog. The focus is sharp on the metallic DJ equipment and the artist's hands, creating a sense of physical presence and raw energy within a luxurious cyberpunk setting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBaH-4PQV4nSraP9_VBobBmeOWdxGDNYRbnOPI1eRif1tebN-XxiqdVe2T3-kBUbxL_kGr2kLSH2oWqfMq_psUTfU2o8Lnb2wLMlUeeOi6fpX8Bg0pY_Vf-rQAvtSHyQUUhPIag03c9QOTgpfS6M-CJJgK3-_QBPJ8aIu-vdLL3RvoeUVddB_teB5UpihZDk4y2fJGk8KkxWOEgdPpJ8t6LJ6pFPF3j0KGSlpwN4k1rZmEpfgq6uwWtEkKp-IuCuAPC5EDIyxcKN-g"/>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface text-center truncate w-full">Neuro</span>
+</div>
+<!-- Artist 3 -->
+<div class="flex flex-col items-center gap-2 min-w-[80px]">
+<div class="w-20 h-20 rounded-full overflow-hidden border border-white/20 relative group">
+<div class="absolute inset-0 bg-primary-container/20 opacity-0 group-hover:opacity-100 transition-opacity z-10 rounded-full"></div>
+<img class="w-full h-full object-cover" data-alt="An abstract visualization of a music artist represented by glowing, holographic geometric shards floating in a dark, empty digital space. The shards emit a soft luminescence in secondary fixed colors (light purple) against a deep black-blue void. The image evokes a sense of exclusivity, awe, and high-fidelity sonic exploration." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBRHKO1pR6L7mRypiIIZPIpliAcjZvg6CuSDefuyMENdZ0ExwifZnWV5WradKXVWPTS3lO236zVoqbeeXG4ZqBWUUhKyfF9xKwKDudFhMDR_CUh1SAzwWY7AXlRcXmcktLmTTjp-rtXNo47JGAB0a4uJg-DkVduIgVecBWrNB7G9353qSZx2V8Uy37OHpZIa-aiqX50XvcDBOKVPit4xFLfwK6GX6jrRnO2LX0CdDcBNxH-q0YybgXEqcHQTs73KAi1BbmkUB6YfFY"/>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface text-center truncate w-full">AeroX</span>
+</div>
+<!-- Artist 4 -->
+<div class="flex flex-col items-center gap-2 min-w-[80px]">
+<div class="w-20 h-20 rounded-full overflow-hidden border border-white/20 relative group">
+<div class="absolute inset-0 bg-primary-container/20 opacity-0 group-hover:opacity-100 transition-opacity z-10 rounded-full"></div>
+<img class="w-full h-full object-cover" data-alt="A stylized portrait of an artist with a background of deep navy and bright cyan glowing gradients, simulating a neon light source reflecting off a glass surface. The artist is silhouetted against the bright neon, giving a mysterious and premium vibe. The aesthetic aligns perfectly with a SaaS-meets-Luxury cyberpunk music application." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBmp_1njKjHON4s_5vpM10kkTX4zp_D58QVYhCq-yqzt918Myl3iRc63QK84xaEYSJuuP1yZeMkRkEqJzgvHhsKpMqhXTpJEV5kNYiNUbHav9EamT9CMGCv0xkmDV_t6J_UxPyN3v-DT-WMse2UK_STAhTsGHRFeTBYY9pYH2u6U-IEuri2bkQYobxP4YQag_ZWWZB5at34rr34wisv_q3MnRGpsXPWo_wcCsHSiAx7j72ZGBt2hycurwXYatLyRkwjP5Sydzf3Dfc"/>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface text-center truncate w-full">Echo</span>
+</div>
+</div>
+</section>
+<!-- Genres Grid -->
+<section>
+<h2 class="font-title-md text-title-md text-on-surface mb-gutter-md">Explore Frequencies</h2>
+<div class="grid grid-cols-2 gap-stack-unit">
+<!-- Genre Tile 1 -->
+<div class="relative h-24 rounded-xl overflow-hidden group cursor-pointer">
+<div class="absolute inset-0 bg-gradient-to-br from-[#0a1322] to-[#5516be] opacity-80 z-10"></div>
+<div class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?ixlib=rb-4.0.3&amp;auto=format&amp;fit=crop&amp;w=400&amp;q=80')] bg-cover bg-center mix-blend-overlay"></div>
+<div class="absolute inset-0 flex items-end p-3 z-20">
+<span class="font-headline-lg-mobile text-[16px] font-bold text-white drop-shadow-md">Deep Space</span>
+</div>
+</div>
+<!-- Genre Tile 2 -->
+<div class="relative h-24 rounded-xl overflow-hidden group cursor-pointer">
+<div class="absolute inset-0 bg-gradient-to-br from-[#004f58] to-[#00daf3] opacity-80 z-10"></div>
+<div class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1550684848-fac1c5b4e853?ixlib=rb-4.0.3&amp;auto=format&amp;fit=crop&amp;w=400&amp;q=80')] bg-cover bg-center mix-blend-overlay"></div>
+<div class="absolute inset-0 flex items-end p-3 z-20">
+<span class="font-headline-lg-mobile text-[16px] font-bold text-white drop-shadow-md">Glitch Hop</span>
+</div>
+</div>
+<!-- Genre Tile 3 -->
+<div class="relative h-24 rounded-xl overflow-hidden group cursor-pointer">
+<div class="absolute inset-0 bg-gradient-to-br from-[#68000f] to-[#ffb3b0] opacity-80 z-10"></div>
+<div class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1614624532983-4ce03382d63d?ixlib=rb-4.0.3&amp;auto=format&amp;fit=crop&amp;w=400&amp;q=80')] bg-cover bg-center mix-blend-overlay"></div>
+<div class="absolute inset-0 flex items-end p-3 z-20">
+<span class="font-headline-lg-mobile text-[16px] font-bold text-white drop-shadow-md">Redline</span>
+</div>
+</div>
+<!-- Genre Tile 4 -->
+<div class="relative h-24 rounded-xl overflow-hidden group cursor-pointer">
+<div class="absolute inset-0 bg-gradient-to-br from-[#23005c] to-[#d0bcff] opacity-80 z-10"></div>
+<div class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1514525253161-7a46d19cd819?ixlib=rb-4.0.3&amp;auto=format&amp;fit=crop&amp;w=400&amp;q=80')] bg-cover bg-center mix-blend-overlay"></div>
+<div class="absolute inset-0 flex items-end p-3 z-20">
+<span class="font-headline-lg-mobile text-[16px] font-bold text-white drop-shadow-md">Liquid Bass</span>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar (Mobile Only) -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-6 pb-8 pt-4 bg-surface-container-low/60 backdrop-blur-xl border-t border-white/10 shadow-[0_-4px_24px_rgba(0,229,255,0.1)] rounded-t-lg md:hidden">
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-3 hover:text-primary transition-all active:scale-90 duration-300" href="#">
+<span class="material-symbols-outlined text-[24px]">home</span>
+<span class="font-label-sm text-label-sm mt-1 sr-only">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-primary-container/20 text-primary-fixed-dim rounded-full p-3 shadow-[0_0_15px_rgba(0,229,255,0.4)] transition-all active:scale-90 duration-300" href="#">
+<span class="material-symbols-outlined text-[24px]" style="font-variation-settings: 'FILL' 1;">search</span>
+<span class="font-label-sm text-label-sm mt-1 sr-only">Search</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-3 hover:text-primary transition-all active:scale-90 duration-300" href="#">
+<span class="material-symbols-outlined text-[24px]">library_music</span>
+<span class="font-label-sm text-label-sm mt-1 sr-only">Library</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-3 hover:text-primary transition-all active:scale-90 duration-300" href="#">
+<span class="material-symbols-outlined text-[24px]">person</span>
+<span class="font-label-sm text-label-sm mt-1 sr-only">Profile</span>
+</a>
+</nav>
+</body></html>

@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Sonic Portal - Full Player</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&amp;family=Hanken+Grotesk:wght@400;500;600&amp;family=Geist:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-container-high": "#222a3a",
+                        "on-background": "#dae2f8",
+                        "on-tertiary": "#68000f",
+                        "secondary-fixed": "#e9ddff",
+                        "on-secondary-fixed-variant": "#5516be",
+                        "background": "#0a1322",
+                        "error-container": "#93000a",
+                        "surface-bright": "#31394a",
+                        "on-error": "#690005",
+                        "secondary": "#d0bcff",
+                        "surface-container-low": "#131c2b",
+                        "surface-container": "#17202f",
+                        "tertiary-fixed-dim": "#ffb3b0",
+                        "inverse-on-surface": "#283141",
+                        "on-primary-container": "#00626e",
+                        "surface-dim": "#0a1322",
+                        "inverse-primary": "#006875",
+                        "surface": "#0a1322",
+                        "on-primary-fixed": "#001f24",
+                        "surface-container-highest": "#2c3545",
+                        "on-surface-variant": "#bac9cc",
+                        "primary": "#c3f5ff",
+                        "error": "#ffb4ab",
+                        "on-secondary-container": "#c4abff",
+                        "on-tertiary-container": "#a6292f",
+                        "on-secondary-fixed": "#23005c",
+                        "primary-container": "#00e5ff",
+                        "on-primary-fixed-variant": "#004f58",
+                        "primary-fixed": "#9cf0ff",
+                        "on-tertiary-fixed": "#410006",
+                        "outline": "#849396",
+                        "surface-container-lowest": "#060e1d",
+                        "on-tertiary-fixed-variant": "#8c1520",
+                        "on-error-container": "#ffdad6",
+                        "secondary-fixed-dim": "#d0bcff",
+                        "secondary-container": "#571bc1",
+                        "on-primary": "#00363d",
+                        "surface-variant": "#2c3545",
+                        "surface-tint": "#00daf3",
+                        "on-surface": "#dae2f8",
+                        "primary-fixed-dim": "#00daf3",
+                        "tertiary-container": "#ffc1be",
+                        "tertiary": "#ffe7e5",
+                        "tertiary-fixed": "#ffdad8",
+                        "outline-variant": "#3b494c",
+                        "inverse-surface": "#dae2f8",
+                        "on-secondary": "#3c0091"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "1rem",
+                        "lg": "2rem",
+                        "xl": "3rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "gutter-md": "16px",
+                        "section-gap": "40px",
+                        "stack-unit": "8px",
+                        "container-margin": "24px"
+                    },
+                    "fontFamily": {
+                        "display-lg": ["Sora"],
+                        "body-lg": ["Hanken Grotesk"],
+                        "headline-lg": ["Sora"],
+                        "label-sm": ["Geist"],
+                        "title-md": ["Sora"],
+                        "headline-lg-mobile": ["Sora"],
+                        "body-md": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "label-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0.1em", "fontWeight": "600" }],
+                        "title-md": ["20px", { "lineHeight": "28px", "fontWeight": "500" }],
+                        "headline-lg-mobile": ["28px", { "lineHeight": "36px", "fontWeight": "600" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .pulse-halo {
+            animation: pulse-ring 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); opacity: 0.8; box-shadow: 0 0 0 0 rgba(0, 229, 255, 0.7); }
+            70% { transform: scale(1); opacity: 0.4; box-shadow: 0 0 0 30px rgba(0, 229, 255, 0); }
+            100% { transform: scale(0.95); opacity: 0.8; box-shadow: 0 0 0 0 rgba(0, 229, 255, 0); }
+        }
+        
+        .progress-glow {
+            box-shadow: 0 0 15px rgba(0, 229, 255, 0.8);
+        }
+
+        .bg-mesh-gradient {
+            background: radial-gradient(circle at 20% 30%, rgba(87, 27, 193, 0.3) 0%, transparent 50%),
+                        radial-gradient(circle at 80% 70%, rgba(0, 229, 255, 0.2) 0%, transparent 50%),
+                        radial-gradient(circle at 50% 50%, #0a1322 0%, #060e1d 100%);
+            background-size: 200% 200%;
+            animation: mesh-shift 15s ease infinite;
+        }
+
+        @keyframes mesh-shift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        .glass-panel {
+            background: rgba(23, 32, 47, 0.4);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background h-screen w-full overflow-hidden flex flex-col font-body-md select-none">
+<!-- Dynamic Background Mesh -->
+<div class="absolute inset-0 bg-mesh-gradient -z-10 pointer-events-none"></div>
+<!-- Top App Bar (Modified for Full Player - Back Button) -->
+<header class="flex justify-between items-center px-container-margin py-stack-unit w-full z-50 bg-transparent pt-6">
+<button class="w-12 h-12 flex items-center justify-center rounded-full bg-surface-container-highest/50 backdrop-blur-md border border-white/5 text-on-surface hover:text-primary transition-colors active:scale-95">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">keyboard_arrow_down</span>
+</button>
+<div class="text-center">
+<p class="font-label-sm text-label-sm text-primary uppercase tracking-widest opacity-80">Now Playing</p>
+<p class="font-title-md text-title-md text-on-background font-bold tracking-tight">Cyber City Radio</p>
+</div>
+<button class="w-12 h-12 flex items-center justify-center rounded-full bg-surface-container-highest/50 backdrop-blur-md border border-white/5 text-on-surface hover:text-primary transition-colors active:scale-95">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">more_vert</span>
+</button>
+</header>
+<!-- Main Player Content -->
+<main class="flex-1 flex flex-col items-center justify-center px-container-margin w-full max-w-md mx-auto relative mt-4">
+<!-- Artwork Section with Pulse Halo -->
+<div class="relative w-full aspect-square max-w-[320px] mx-auto mb-section-gap flex items-center justify-center">
+<!-- Pulsing Halo Background -->
+<div class="absolute inset-0 rounded-[2rem] pulse-halo bg-primary-container/20 -z-10"></div>
+<!-- Album Art Glass Container -->
+<div class="w-full h-full rounded-[2rem] overflow-hidden glass-panel shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative z-10 border border-white/10 group">
+<img alt="Album Art" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="A highly detailed cyberpunk city skyline at night, viewed from an elevated perspective. The scene is drenched in vibrant neon lighting, primarily electric cyan and deep purple, reflecting off glass skyscrapers and wet metallic surfaces. Flying vehicles leave glowing light trails through the smoggy, futuristic atmosphere. The mood is dark, atmospheric, and technologically advanced." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCXXE0PyNnxG9dgEqwLArOT1rPKiHIr9UbntEjevl5CqWL0e2owMQJgA8v0qmMKT9tGgLnFWbP9i6lT_cYVv6MTINT38SccIfgZemNK02gN7qI1DTRqIhP7GLzhho3pUQrxJ2g3oDwUfzrZX6-6HaVT2TKuCVV-4GQspMl4CVyKOpjuh9XbvKBvrRJ0gF27_ZYnsaokFm9C7NxjAivoXKUHUYG19Ubn5zXDDj_YkVt00W0uF0-Gr4vi2uEOMc2Tkcjt145oUEx97cw"/>
+<!-- Inner Shadow/Vignette -->
+<div class="absolute inset-0 shadow-[inset_0_-40px_60px_-15px_rgba(10,19,34,0.8)] pointer-events-none"></div>
+</div>
+</div>
+<!-- Track Info -->
+<div class="w-full text-center mb-section-gap">
+<div class="flex items-center justify-between w-full mb-2">
+<div class="flex-1 text-left">
+<h1 class="font-headline-lg-mobile text-headline-lg-mobile text-on-background font-bold tracking-tight truncate max-w-[280px]">Neon Resonance</h1>
+<h2 class="font-body-lg text-body-lg text-on-surface-variant truncate max-w-[280px]">Synthwave Cartel · Chrome EP</h2>
+</div>
+<button class="text-primary hover:text-primary-fixed transition-colors active:scale-90 p-2">
+<span class="material-symbols-outlined text-3xl" style="font-variation-settings: 'FILL' 1;">favorite</span>
+</button>
+</div>
+</div>
+<!-- Progress Bar -->
+<div class="w-full mb-section-gap">
+<div class="relative w-full h-2 bg-surface-container-highest rounded-full overflow-hidden cursor-pointer mb-2">
+<!-- Progress Fill -->
+<div class="absolute top-0 left-0 h-full w-[65%] bg-gradient-to-r from-secondary-container to-primary-container rounded-full"></div>
+<!-- Playhead Glow -->
+<div class="absolute top-1/2 -translate-y-1/2 left-[65%] w-3 h-3 bg-white rounded-full progress-glow shadow-[0_0_10px_rgba(255,255,255,1)]"></div>
+</div>
+<div class="flex justify-between w-full font-label-sm text-label-sm text-on-surface-variant">
+<span>2:45</span>
+<span>-1:15</span>
+</div>
+</div>
+<!-- Playback Controls -->
+<div class="w-full flex items-center justify-between px-2 mb-section-gap">
+<button class="text-on-surface-variant hover:text-primary transition-colors active:scale-90 p-3">
+<span class="material-symbols-outlined text-3xl" style="font-variation-settings: 'FILL' 0;">shuffle</span>
+</button>
+<div class="flex items-center gap-gutter-md">
+<button class="text-on-background hover:text-primary transition-colors active:scale-90 p-2">
+<span class="material-symbols-outlined text-4xl" style="font-variation-settings: 'FILL' 1;">skip_previous</span>
+</button>
+<button class="w-20 h-20 flex items-center justify-center rounded-full bg-gradient-to-br from-primary-container to-secondary-container text-on-primary shadow-[0_0_30px_rgba(0,229,255,0.3)] hover:shadow-[0_0_40px_rgba(0,229,255,0.5)] transition-all active:scale-95">
+<span class="material-symbols-outlined text-5xl" style="font-variation-settings: 'FILL' 1;">pause</span>
+</button>
+<button class="text-on-background hover:text-primary transition-colors active:scale-90 p-2">
+<span class="material-symbols-outlined text-4xl" style="font-variation-settings: 'FILL' 1;">skip_next</span>
+</button>
+</div>
+<button class="text-on-surface-variant hover:text-primary transition-colors active:scale-90 p-3">
+<span class="material-symbols-outlined text-3xl" style="font-variation-settings: 'FILL' 0;">repeat</span>
+</button>
+</div>
+<!-- Lyrics Teaser (Swipe Up) -->
+<div class="w-full glass-panel rounded-t-xl mt-auto pt-4 pb-8 px-6 flex flex-col items-center cursor-pointer group hover:bg-surface-container/60 transition-colors">
+<div class="w-12 h-1 bg-white/20 rounded-full mb-3 group-hover:bg-primary/50 transition-colors"></div>
+<p class="font-body-md text-body-md text-on-surface-variant text-center opacity-80 line-clamp-2">
+                "Lost in the glow of the static screens, chasing ghosts in the digital streams..."
+            </p>
+<p class="font-label-sm text-label-sm text-primary uppercase tracking-widest mt-2 opacity-0 group-hover:opacity-100 transition-opacity">Swipe for Lyrics</p>
+</div>
+</main>
+</body></html>

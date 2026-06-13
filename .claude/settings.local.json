@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew assembleDebug *)",
+      "Bash(adb shell *)",
+      "Bash(adb logcat *)",
+      "Bash(curl -s --connect-timeout 5 \"http://162.250.121.168/api/search?q=test\")",
+      "Bash(curl -v --connect-timeout 5 \"http://162.250.121.168/api/search?q=test\")",
+      "Bash(curl -v --connect-timeout 5 \"http://162.250.121.168/api/audio?url=https://www.youtube.com/watch?v=Y50HSJQuwNU\")",
+      "Bash(curl -s --connect-timeout 5 \"http://162.250.121.168/api/search?q=mc%20livinho\")",
+      "Bash(curl *)",
+      "Bash(export JAVA_HOME=/opt/android-studio/jbr)",
+      "Bash(./gradlew installDebug)",
+      "Bash(git init *)",
+      "Bash(git add *)"
+    ]
+  }
+}
