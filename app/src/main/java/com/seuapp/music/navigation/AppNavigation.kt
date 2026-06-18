@@ -8,11 +8,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.*
-import com.seuapp.music.MainActivity
 import com.seuapp.music.ui.components.MiniPlayer
 import com.seuapp.music.ui.screens.HomeScreen
 import com.seuapp.music.ui.screens.PlayerScreen
@@ -40,14 +38,6 @@ fun AppNavigation() {
     val isPlaying by viewModel.isPlaying.collectAsState()
     val isLoggedIn by viewModel.isLoggedIn.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-    val context = LocalContext.current
-
-    LaunchedEffect(Unit) {
-        val activity = context as? MainActivity
-        activity?.getService()?.let { service ->
-            viewModel.initServiceConnection(service)
-        }
-    }
 
     val startDestination = remember { mutableStateOf<String?>(null) }
 

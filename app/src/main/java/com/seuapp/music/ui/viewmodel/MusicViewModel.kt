@@ -1,13 +1,16 @@
 package com.seuapp.music.ui.viewmodel
 
 import android.app.Application
-import android.content.Intent
-import android.os.Build
+import android.content.ComponentName
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.ListenableFuture
 import com.google.gson.Gson
 import com.seuapp.music.data.api.RetrofitClient
 import com.seuapp.music.data.local.FavoriteEntity
@@ -30,10 +33,6 @@ class MusicViewModel(app: Application) : AndroidViewModel(app) {
     private val gson = Gson()
     private val db = MusicDatabase.getDatabase(app)
     private val dao = db.musicDao()
-    private val appContext = app
-    private var musicService: MusicService? = null
-
-    val player: ExoPlayer = ExoPlayer.Builder(app).build()
 
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query
@@ -77,32 +76,55 @@ class MusicViewModel(app: Application) : AndroidViewModel(app) {
     private val _progress = MutableStateFlow(0f)
     val progress: StateFlow<Float> = _progress
 
+    private val _duration = MutableStateFlow(0L)
+    val duration: StateFlow<Long> = _duration
+
+    private val _playbackError = MutableStateFlow<String?>(null)
+    val playbackError: StateFlow<String?> = _playbackError
+
     private var queue: List<Track> = emptyList()
     private var queueIndex: Int = -1
     private var shuffleOrder: List<Int> = emptyList()
     private var shufflePos: Int = -1
     private val resolvedUrls = mutableMapOf<String, String>()
 
+    private var controllerFuture: ListenableFuture<MediaController>? = null
+    private var controller: MediaController? = null
+    private var pendingPlay: (() -> Unit)? = null
+
+    private val playerListener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) { _isPlaying.value = isPlaying }
+        override fun onPlaybackStateChanged(state: Int) {
+            if (state == Player.STATE_ENDED) {
+                if (_repeat.value) { controller?.seekTo(0); controller?.play() } else { next() }
+            }
+        }
+        override fun onPlayerError(error: PlaybackException) {
+            error.printStackTrace()
+            _playbackError.value = error.message ?: "Erro de reprodução"
+        }
+    }
+
     init {
-        player.addListener(object : Player.Listener {
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                _isPlaying.value = isPlaying
-            }
-            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && queue.isNotEmpty()) {
-                    val idx = queue.indexOfFirst { it.id == mediaItem?.mediaId }
-                    if (idx >= 0) {
-                        queueIndex = idx
-                        _currentTrack.value = queue[idx]
-                    }
-                }
-            }
-        })
+        val token = SessionToken(app, ComponentName(app, MusicService::class.java))
+        val future = MediaController.Builder(app, token).buildAsync()
+        controllerFuture = future
+        future.addListener({
+            val c = future.get()
+            controller = c
+            c.addListener(playerListener)
+            pendingPlay?.let { it(); pendingPlay = null }
+        }, ContextCompat.getMainExecutor(app))
+
         viewModelScope.launch {
             while (true) {
                 withContext(Dispatchers.Main) {
-                    val dur = player.duration
-                    _progress.value = if (dur > 0) player.currentPosition.toFloat() / dur else 0f
+                    val c = controller
+                    if (c != null) {
+                        val dur = c.duration
+                        _duration.value = if (dur > 0) dur else 0L
+                        _progress.value = if (dur > 0) c.currentPosition.toFloat() / dur else 0f
+                    }
                 }
                 kotlinx.coroutines.delay(500)
             }
@@ -113,20 +135,6 @@ class MusicViewModel(app: Application) : AndroidViewModel(app) {
             loadRecentTracks()
             loadUser()
         }
-    }
-
-    private fun startMusicService() {
-        val intent = Intent(appContext, MusicService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            appContext.startForegroundService(intent)
-        } else {
-            appContext.startService(intent)
-        }
-    }
-
-    fun initServiceConnection(service: MusicService) {
-        musicService = service
-        service.setPlayer(player)
     }
 
     private suspend fun loadUser() {
@@ -169,28 +177,23 @@ class MusicViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun playTrack(track: Track) {
-        startMusicService()
-        _currentTrack.value = track
         queue = _tracks.value
         queueIndex = queue.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
         resetShuffle()
         resolvedUrls.clear()
-        prepareAndPlay(track, queueIndex)
-        saveRecentTrack(track)
+        playCurrent()
     }
 
     fun playQueue(tracks: List<Track>, start: Track) {
-        startMusicService()
-        _currentTrack.value = start
         queue = tracks
         queueIndex = tracks.indexOfFirst { it.id == start.id }.coerceAtLeast(0)
         resetShuffle()
         _tracks.value = tracks
         resolvedUrls.clear()
-        prepareAndPlay(start, queueIndex)
+        playCurrent()
     }
 
-    fun next() {
+    private fun advanceIndex() {
         if (queue.isEmpty()) return
         if (_shuffle.value) {
             if (shuffleOrder.isEmpty()) buildShuffleOrder()
@@ -199,13 +202,10 @@ class MusicViewModel(app: Application) : AndroidViewModel(app) {
         } else {
             queueIndex = (queueIndex + 1) % queue.size
         }
-        _currentTrack.value = queue[queueIndex]
-        switchToQueueIndex(queueIndex)
     }
 
-    fun prev() {
+    private fun retreatIndex() {
         if (queue.isEmpty()) return
-        if (player.currentPosition > 3000L) { player.seekTo(0); return }
         if (_shuffle.value) {
             if (shuffleOrder.isEmpty()) buildShuffleOrder()
             shufflePos = (shufflePos - 1 + shuffleOrder.size) % shuffleOrder.size
@@ -213,13 +213,26 @@ class MusicViewModel(app: Application) : AndroidViewModel(app) {
         } else {
             queueIndex = (queueIndex - 1 + queue.size) % queue.size
         }
-        _currentTrack.value = queue[queueIndex]
-        switchToQueueIndex(queueIndex)
+    }
+
+    fun next() {
+        if (queue.isEmpty()) return
+        advanceIndex()
+        playCurrent()
+    }
+
+    fun prev() {
+        if (queue.isEmpty()) return
+        val c = controller
+        if (c != null && c.currentPosition > 3000L) { c.seekTo(0); return }
+        retreatIndex()
+        playCurrent()
     }
 
     fun toggleShuffle() { _shuffle.value = !_shuffle.value; if (_shuffle.value) buildShuffleOrder() else resetShuffle() }
     fun toggleRepeat() { _repeat.value = !_repeat.value }
-    fun togglePlayPause() { if (player.isPlaying) player.pause() else player.play() }
+    fun togglePlayPause() { val c = controller ?: return; if (c.isPlaying) c.pause() else c.play() }
+    fun clearError() { _playbackError.value = null }
 
     fun toggleFavorite(track: Track) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -315,42 +328,46 @@ class MusicViewModel(app: Application) : AndroidViewModel(app) {
         _recentTracks.value = dao.getRecentTracks().map { it.toTrack() }
     }
 
-    private suspend fun resolveUrl(track: Track): String {
+    private suspend fun resolveUrl(track: Track): String? {
         resolvedUrls[track.id]?.let { return it }
         return try {
             val response = api.getAudio(track.url)
-            val url = response.streamUrl ?: track.url
-            resolvedUrls[track.id] = url
+            val url = response.streamUrl
+            if (url != null) resolvedUrls[track.id] = url
             url
-        } catch (e: Exception) { e.printStackTrace(); track.url }
+        } catch (e: Exception) { e.printStackTrace(); null }
     }
 
-    private fun prepareAndPlay(track: Track, index: Int) {
+    private fun playCurrent(autoSkipTried: Int = 0) {
+        if (queue.isEmpty() || queueIndex < 0 || queueIndex >= queue.size) return
+        val track = queue[queueIndex]
+        _currentTrack.value = track
         viewModelScope.launch {
-            try {
-                val streamUrl = resolveUrl(track)
-                val items = queue.map { t ->
-                    MediaItem.Builder().setMediaId(t.id).setUri(if (t.id == track.id) streamUrl else t.url).build()
+            val streamUrl = resolveUrl(track)
+            if (streamUrl == null) {
+                if (autoSkipTried < queue.size) {
+                    advanceIndex()
+                    playCurrent(autoSkipTried + 1)
+                } else {
+                    _playbackError.value = "Não foi possível reproduzir esta faixa"
                 }
-                player.setMediaItems(items, index, 0L)
-                player.prepare()
-                player.play()
-            } catch (e: Exception) { e.printStackTrace() }
-        }
-    }
-
-    private fun switchToQueueIndex(index: Int) {
-        viewModelScope.launch {
-            try {
-                val track = queue[index]
-                val streamUrl = resolveUrl(track)
-                val items = queue.map { t ->
-                    MediaItem.Builder().setMediaId(t.id).setUri(if (t.id == track.id) streamUrl else t.url).build()
+                return@launch
+            }
+            _playbackError.value = null
+            val item = MediaItem.Builder().setMediaId(track.id).setUri(streamUrl).build()
+            val c = controller
+            if (c == null) {
+                pendingPlay = {
+                    controller?.setMediaItem(item)
+                    controller?.prepare()
+                    controller?.play()
                 }
-                player.setMediaItems(items, index, 0L)
-                player.prepare()
-                player.play()
-            } catch (e: Exception) { e.printStackTrace() }
+            } else {
+                c.setMediaItem(item)
+                c.prepare()
+                c.play()
+            }
+            saveRecentTrack(track)
         }
     }
 
@@ -361,5 +378,9 @@ class MusicViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun resetShuffle() { shuffleOrder = emptyList(); shufflePos = -1 }
 
-    override fun onCleared() { player.release() }
+    override fun onCleared() {
+        controller?.removeListener(playerListener)
+        controllerFuture?.let { MediaController.releaseFuture(it) }
+        controller = null
+    }
 }

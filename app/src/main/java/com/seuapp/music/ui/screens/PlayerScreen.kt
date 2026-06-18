@@ -29,6 +29,7 @@ fun PlayerScreen(viewModel: MusicViewModel, onBack: () -> Unit) {
     val shuffle by viewModel.shuffle.collectAsState()
     val repeat by viewModel.repeat.collectAsState()
     val progress by viewModel.progress.collectAsState()
+    val duration by viewModel.duration.collectAsState()
 
     val infiniteTransition = rememberInfiniteTransition()
     val scale by infiniteTransition.animateFloat(
@@ -102,8 +103,8 @@ fun PlayerScreen(viewModel: MusicViewModel, onBack: () -> Unit) {
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(formatMs((progress * playerDurationOrDefault(viewModel)).toLong()), style = MaterialTheme.typography.labelSmall, color = MutedSteel)
-                    Text(formatMs(playerDurationOrDefault(viewModel)), style = MaterialTheme.typography.labelSmall, color = MutedSteel)
+                    Text(formatMs((progress * (duration.takeIf { it > 0 } ?: 1L)).toLong()), style = MaterialTheme.typography.labelSmall, color = MutedSteel)
+                    Text(formatMs((duration.takeIf { it > 0 } ?: 1L)), style = MaterialTheme.typography.labelSmall, color = MutedSteel)
                 }
             }
 
@@ -136,5 +137,3 @@ private fun formatMs(ms: Long): String {
     val s = ms / 1000
     return "${s / 60}:${(s % 60).toString().padStart(2, '0')}"
 }
-
-private fun playerDurationOrDefault(vm: MusicViewModel): Long = vm.player.duration.takeIf { it > 0 } ?: 1L
