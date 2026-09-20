@@ -132,31 +132,52 @@ def search(q: str = Query(..., min_length=1)):
 def _audio_cached(url: str) -> dict:
     import yt_dlp
 
-    with _YTDLP_LOCK:
-        with yt_dlp.YoutubeDL(_ydl_audio_opts()) as ydl:
-            info = ydl.extract_info(url, download=False)
-    if info is None:
-        return {}
-    stream = info.get("url")
-    if not stream:
-        # pega melhor formato com url
-        for f in info.get("formats") or []:
-            if f.get("url") and (f.get("acodec") not in (None, "none")):
-                stream = f["url"]
-                break
+    last_err = "unknown"
+    # tenta ordens de player_client diferentes (o YouTube bloqueia
+    # por cliente/IP; o que falha no android passa no web e vice-versa)
+    client_orders = [
+        ["android", "web", "ios"],
+        ["web", "android", "ios"],
+        ["ios", "web", "android"],
+        ["tv", "web", "android"],
+    ]
+    for clients in client_orders:
+        opts = _ydl_audio_opts()
+        opts["extractor_args"] = {"youtube": {"player_client": clients}}
+        try:
+            with _YTDLP_LOCK:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+        except Exception as e:  # noqa: BLE001 - vira 502 com motivo, nunca 500
+            last_err = f"{type(e).__name__}: {str(e)[:300]}"
+            continue
+        if info is None:
+            last_err = "empty info"
+            continue
+        stream = info.get("url")
         if not stream:
+            # pega melhor formato com url
             for f in info.get("formats") or []:
-                if f.get("url"):
+                if f.get("url") and (f.get("acodec") not in (None, "none")):
                     stream = f["url"]
                     break
-    vid = info.get("id") or ""
-    return {
-        "title": info.get("title"),
-        "channel": info.get("channel") or info.get("uploader"),
-        "thumbnail": info.get("thumbnail")
-        or (f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg" if vid else None),
-        "streamUrl": stream,
-    }
+            if not stream:
+                for f in info.get("formats") or []:
+                    if f.get("url"):
+                        stream = f["url"]
+                        break
+        if not stream:
+            last_err = "no url in formats"
+            continue
+        vid = info.get("id") or ""
+        return {
+            "title": info.get("title"),
+            "channel": info.get("channel") or info.get("uploader"),
+            "thumbnail": info.get("thumbnail")
+            or (f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg" if vid else None),
+            "streamUrl": stream,
+        }
+    return {"_error": last_err}
 
 
 @app.get("/api/audio")
@@ -164,11 +185,20 @@ def audio(url: str = Query(..., min_length=1)):
     # aceita id puro também
     if re.fullmatch(r"[A-Za-z0-9_-]{11}", url):
         url = f"https://www.youtube.com/watch?v={url}"
-    data = _audio_cached(url)
+    try:
+        data = _audio_cached(url)
+    except Exception as e:  # noqa: BLE001 - nunca 500 sem motivo
+        return JSONResponse(
+            status_code=502,
+            content={"error": f"extract crash: {type(e).__name__}: {str(e)[:300]}"},
+        )
     if not data.get("streamUrl"):
         _audio_cached.cache_clear()
         return JSONResponse(
             status_code=502,
-            content={"error": "no stream (youtube bloqueou este IP; rode o server em casa)"},
+            content={
+                "error": "no stream (youtube bloqueou este IP; rode o server em casa)",
+                "detail": data.get("_error", "")[:300],
+            },
         )
     return data
