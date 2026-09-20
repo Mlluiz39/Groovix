@@ -13,6 +13,9 @@ import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.gson.Gson
 import com.seuapp.music.data.api.RetrofitClient
+import com.seuapp.music.data.api.YoutubeApi
+import com.seuapp.music.data.model.toTrack
+import com.seuapp.music.data.repository.PlayerRepository
 import com.seuapp.music.data.local.FavoriteEntity
 import com.seuapp.music.data.local.MusicDatabase
 import com.seuapp.music.data.local.PlaylistEntity
@@ -30,6 +33,7 @@ import java.util.UUID
 
 class MusicViewModel(app: Application) : AndroidViewModel(app) {
     private val api = RetrofitClient.api
+    private val playerRepo = PlayerRepository()
     private val gson = Gson()
     private val db = MusicDatabase.getDatabase(app)
     private val dao = db.musicDao()
@@ -82,6 +86,9 @@ class MusicViewModel(app: Application) : AndroidViewModel(app) {
     private val _playbackError = MutableStateFlow<String?>(null)
     val playbackError: StateFlow<String?> = _playbackError
 
+    private val _trending = MutableStateFlow<List<Track>>(emptyList())
+    val trending: StateFlow<List<Track>> = _trending
+
     private var queue: List<Track> = emptyList()
     private var queueIndex: Int = -1
     private var shuffleOrder: List<Int> = emptyList()
@@ -130,10 +137,13 @@ class MusicViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         viewModelScope.launch(Dispatchers.IO) {
-            loadPlaylists()
-            loadFavorites()
-            loadRecentTracks()
-            loadUser()
+            try { loadPlaylists() } catch (e: Exception) { e.printStackTrace() }
+            try { loadFavorites() } catch (e: Exception) { e.printStackTrace() }
+            try { loadRecentTracks() } catch (e: Exception) { e.printStackTrace() }
+            try { loadUser() } catch (e: Exception) { e.printStackTrace() }
+        }
+        viewModelScope.launch {
+            try { _trending.value = playerRepo.trending() } catch (e: Exception) { e.printStackTrace() }
         }
     }
 
@@ -170,27 +180,70 @@ class MusicViewModel(app: Application) : AndroidViewModel(app) {
         if (_query.value.isBlank()) return
         viewModelScope.launch {
             _isLoading.value = true
-            try { _tracks.value = api.search(_query.value).results }
-            catch (e: Exception) { e.printStackTrace() }
-            finally { _isLoading.value = false }
+            _playbackError.value = null
+            try {
+                // Audius (tocável) + InnerTube (descoberta) — nunca joga exceção pra UI
+                val res = playerRepo.search(_query.value)
+                _tracks.value = res
+                if (res.isEmpty()) {
+                    _playbackError.value =
+                        "Nada por aqui — servidor acordando ou sem internet. Toque em buscar de novo."
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _playbackError.value = "Falha na busca. Verifique a internet e tente de novo."
+            } finally { _isLoading.value = false }
         }
     }
 
+    // Busca oficial YouTube Data API v3. Passe a key via BuildConfig/local.properties.
+    fun searchYoutube(apiKey: String) {
+        if (_query.value.isBlank() || apiKey.isBlank()) return
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val res = RetrofitClient.youtubeApi.search(
+                    query = _query.value,
+                    apiKey = apiKey
+                )
+                _tracks.value = res.items.mapNotNull { it.toTrack() }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _playbackError.value = "Falha na busca do YouTube"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun isYoutubeTrack(track: Track): Boolean =
+        track.id.matches(Regex("[A-Za-z0-9_-]{6,}")) &&
+            (track.url.contains("youtube.com") || track.url.contains("youtu.be"))
+
     fun playTrack(track: Track) {
-        queue = _tracks.value
-        queueIndex = queue.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
-        resetShuffle()
-        resolvedUrls.clear()
-        playCurrent()
+        try {
+            queue = _tracks.value.ifEmpty { listOf(track) }
+            queueIndex = queue.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
+            resetShuffle()
+            playCurrent()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            _playbackError.value = "Não foi possível iniciar a faixa."
+        }
     }
 
     fun playQueue(tracks: List<Track>, start: Track) {
-        queue = tracks
-        queueIndex = tracks.indexOfFirst { it.id == start.id }.coerceAtLeast(0)
-        resetShuffle()
-        _tracks.value = tracks
-        resolvedUrls.clear()
-        playCurrent()
+        try {
+            if (tracks.isEmpty()) return
+            queue = tracks
+            queueIndex = tracks.indexOfFirst { it.id == start.id }.coerceAtLeast(0)
+            resetShuffle()
+            _tracks.value = tracks
+            playCurrent()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            _playbackError.value = "Não foi possível iniciar a fila."
+        }
     }
 
     private fun advanceIndex() {
@@ -216,23 +269,43 @@ class MusicViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun next() {
-        if (queue.isEmpty()) return
-        advanceIndex()
-        playCurrent()
+        try {
+            if (queue.isEmpty()) return
+            advanceIndex()
+            playCurrent()
+        } catch (e: Exception) { e.printStackTrace() }
     }
 
     fun prev() {
-        if (queue.isEmpty()) return
-        val c = controller
-        if (c != null && c.currentPosition > 3000L) { c.seekTo(0); return }
-        retreatIndex()
-        playCurrent()
+        try {
+            if (queue.isEmpty()) return
+            val c = controller
+            if (c != null && try { c.currentPosition } catch (_: Exception) { 0L } > 3000L) {
+                try { c.seekTo(0) } catch (_: Exception) { }
+                return
+            }
+            retreatIndex()
+            playCurrent()
+        } catch (e: Exception) { e.printStackTrace() }
     }
 
-    fun toggleShuffle() { _shuffle.value = !_shuffle.value; if (_shuffle.value) buildShuffleOrder() else resetShuffle() }
-    fun toggleRepeat() { _repeat.value = !_repeat.value }
-    fun togglePlayPause() { val c = controller ?: return; if (c.isPlaying) c.pause() else c.play() }
+    fun toggleShuffle() { try { _shuffle.value = !_shuffle.value; if (_shuffle.value) buildShuffleOrder() else resetShuffle() } catch (e: Exception) { e.printStackTrace() } }
+    fun toggleRepeat() { try { _repeat.value = !_repeat.value } catch (e: Exception) { e.printStackTrace() } }
+    fun togglePlayPause() {
+        try {
+            val c = controller ?: return
+            if (try { c.isPlaying } catch (_: Exception) { false }) try { c.pause() } catch (_: Exception) { }
+            else try { c.play() } catch (_: Exception) { }
+        } catch (e: Exception) { e.printStackTrace() }
+    }
     fun clearError() { _playbackError.value = null }
+
+    fun retryCurrent() {
+        try {
+            if (queue.isEmpty() || queueIndex !in queue.indices) return
+            playCurrent()
+        } catch (e: Exception) { e.printStackTrace() }
+    }
 
     fun toggleFavorite(track: Track) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -330,6 +403,14 @@ class MusicViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun resolveUrl(track: Track): String? {
         resolvedUrls[track.id]?.let { return it }
+        // 1) InnerTube music.player (estilo Muka) — direto googlevideo
+        try {
+            playerRepo.resolveStreamUrl(track)?.let { url ->
+                resolvedUrls[track.id] = url
+                return url
+            }
+        } catch (e: Exception) { e.printStackTrace() }
+        // 2) fallback backend antigo
         return try {
             val response = api.getAudio(track.url)
             val url = response.streamUrl
@@ -338,19 +419,19 @@ class MusicViewModel(app: Application) : AndroidViewModel(app) {
         } catch (e: Exception) { e.printStackTrace(); null }
     }
 
-    private fun playCurrent(autoSkipTried: Int = 0) {
+    private fun playCurrent() {
         if (queue.isEmpty() || queueIndex < 0 || queueIndex >= queue.size) return
         val track = queue[queueIndex]
         _currentTrack.value = track
+        _playbackError.value = null
         viewModelScope.launch {
             val streamUrl = resolveUrl(track)
             if (streamUrl == null) {
-                if (autoSkipTried < queue.size) {
-                    advanceIndex()
-                    playCurrent(autoSkipTried + 1)
-                } else {
-                    _playbackError.value = "Não foi possível reproduzir esta faixa"
-                }
+                // NÃO pula sozinho (era isso que "passava todas da pasta"):
+                // para na faixa e mostra o motivo para debug
+                _playbackError.value =
+                    "Sem stream para ${track.title} (${track.id}). " +
+                    "YouTube bloqueou o player neste IP ou backend off. Tente outra faixa ou Wi-Fi/4G."
                 return@launch
             }
             _playbackError.value = null

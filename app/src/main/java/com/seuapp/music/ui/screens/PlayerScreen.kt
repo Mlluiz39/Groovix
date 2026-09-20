@@ -30,6 +30,7 @@ fun PlayerScreen(viewModel: MusicViewModel, onBack: () -> Unit) {
     val repeat by viewModel.repeat.collectAsState()
     val progress by viewModel.progress.collectAsState()
     val duration by viewModel.duration.collectAsState()
+    val playbackError by viewModel.playbackError.collectAsState()
 
     val infiniteTransition = rememberInfiniteTransition()
     val scale by infiniteTransition.animateFloat(
@@ -95,6 +96,30 @@ fun PlayerScreen(viewModel: MusicViewModel, onBack: () -> Unit) {
             }
 
             Spacer(Modifier.height(12.dp))
+
+            if (playbackError != null) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = SoftCoral.copy(alpha = 0.15f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            playbackError!!,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = SoftCoral,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { viewModel.retryCurrent() }) {
+                            Text("Tentar de novo", color = ElectricCyan)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+            }
 
             Column {
                 Surface(Modifier.fillMaxWidth().height(4.dp), shape = RoundedCornerShape(50), color = SurfaceHighest) {

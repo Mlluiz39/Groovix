@@ -31,6 +31,7 @@ fun SearchScreen(viewModel: MusicViewModel, onTrackClick: () -> Unit) {
     val query by viewModel.query.collectAsState()
     val tracks by viewModel.tracks.collectAsState()
     val loading by viewModel.isLoading.collectAsState()
+    val searchError by viewModel.playbackError.collectAsState()
     val focusManager = LocalFocusManager.current
 
     Column(
@@ -65,11 +66,46 @@ fun SearchScreen(viewModel: MusicViewModel, onTrackClick: () -> Unit) {
             }
         }
 
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(12.dp))
+
+        Text(
+            "Busca via YouTube Music (InnerTube, sem API key)",
+            color = MutedSteel,
+            style = MaterialTheme.typography.labelSmall
+        )
+
+        Spacer(Modifier.height(20.dp))
 
         if (loading) {
             CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally), color = ElectricCyan)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Buscando... (se o servidor estava dormindo, pode levar até 1 min na 1ª vez)",
+                color = MutedSteel,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
         } else if (tracks.isEmpty()) {
+            if (searchError != null) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = SoftCoral.copy(alpha = 0.15f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            searchError!!,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = SoftCoral,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { viewModel.clearError(); viewModel.search() }) {
+                            Text("Tentar de novo", color = ElectricCyan)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+            }
             Text("Buscas Recentes", style = MaterialTheme.typography.titleMedium, color = OffWhite, modifier = Modifier.padding(bottom = 12.dp))
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 item {
@@ -86,7 +122,11 @@ fun SearchScreen(viewModel: MusicViewModel, onTrackClick: () -> Unit) {
             Text("Resultados", style = MaterialTheme.typography.titleMedium, color = OffWhite, modifier = Modifier.padding(bottom = 8.dp))
             LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 items(tracks) { track ->
-                    TrackItem(track = track) { viewModel.playTrack(track); onTrackClick() }
+                    TrackItem(track = track) {
+                        // InnerTube resolve tudo no ExoPlayer (estilo Muka),
+                        // sem abrir IFrame externo
+                        viewModel.playTrack(track); onTrackClick()
+                    }
                 }
             }
         }

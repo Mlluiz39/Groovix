@@ -1,0 +1,15 @@
+# Blueprint do Render — deploy automático do backend groovix-api.
+# Render → New → Blueprint → selecione o repo Groovix.
+services:
+  - type: web
+    name: groovix-api
+    runtime: docker
+    plan: free
+    dockerContext: ./server
+    dockerfilePath: ./server/Dockerfile
+    healthCheckPath: /health
+    envVars:
+      # Opcional: proxy residencial só pro YouTube.
+      # Sem isso, o plugin PO Token resolve na maioria dos casos.
+      - key: YOUTUBE_PROXY
+        sync: false

@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: groovix-api
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      # Opcional: proxy RESIDENCIAL só pro YouTube (formato http://user:pass@host:port).
+      # Sem isso o Render usa IP de datacenter — o plugin PO Token resolve
+      # na maioria dos casos; se der 502, preencha essa var.
+      - key: YOUTUBE_PROXY
+        sync: false

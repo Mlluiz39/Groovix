@@ -1,0 +1,6 @@
+fastapi==0.115.*
+uvicorn[standard]==0.32.*
+yt-dlp>=2025.1.1
+# Provedor de PO Token (faz o YouTube aceitar IP de datacenter).
+# Usa BotGuard local; precisa de node ou deno no host (o Dockerfile já inclui node).
+bgutil-ytdlp-pot-provider>=1.2

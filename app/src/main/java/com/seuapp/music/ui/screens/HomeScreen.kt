@@ -31,6 +31,7 @@ import java.util.Calendar
 @Composable
 fun HomeScreen(viewModel: MusicViewModel, onNavigateToSearch: () -> Unit, onNavigateToSettings: () -> Unit = {}) {
     val recentTracks by viewModel.recentTracks.collectAsState()
+    val trending by viewModel.trending.collectAsState()
     val userName by viewModel.userName.collectAsState()
 
     val greeting = remember {
@@ -115,6 +116,27 @@ fun HomeScreen(viewModel: MusicViewModel, onNavigateToSearch: () -> Unit, onNavi
         }
 
         item { Spacer(Modifier.height(32.dp)) }
+
+        if (trending.isNotEmpty()) {
+            item {
+                Text("Em alta agora (toca direto)",
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.titleMedium, color = OffWhite)
+            }
+            item {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(trending) { track ->
+                        RecentTrackCard(track = track) {
+                            viewModel.playQueue(trending, track)
+                        }
+                    }
+                }
+            }
+            item { Spacer(Modifier.height(32.dp)) }
+        }
 
         if (recentTracks.isNotEmpty()) {
             item {
