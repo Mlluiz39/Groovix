@@ -140,6 +140,9 @@ def _audio_cached(url: str) -> dict:
         ["web", "android", "ios"],
         ["ios", "web", "android"],
         ["tv", "web", "android"],
+        # clientes embedded furam parte dos bloqueios de IP/rede
+        ["web_embedded", "tv_embedded", "mweb"],
+        ["tv_embedded", "web_embedded", "android"],
     ]
     for clients in client_orders:
         opts = _ydl_audio_opts()
