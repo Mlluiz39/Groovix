@@ -4,6 +4,7 @@ import com.seuapp.music.data.api.InnerTubeClient
 import com.seuapp.music.data.api.RetrofitClient
 import com.seuapp.music.data.innerTube.AudiusDataSource
 import com.seuapp.music.data.innerTube.InnerTubeDataSource
+import com.seuapp.music.data.innerTube.SoundCloudDataSource
 import com.seuapp.music.data.model.AudioResponse
 import com.seuapp.music.data.model.Track
 import kotlinx.coroutines.async
@@ -19,7 +20,8 @@ import kotlinx.coroutines.sync.withLock
  */
 class PlayerRepository(
     private val inner: InnerTubeDataSource = InnerTubeDataSource(InnerTubeClient.api),
-    private val audius: AudiusDataSource = AudiusDataSource(RetrofitClient.audiusApi)
+    private val audius: AudiusDataSource = AudiusDataSource(RetrofitClient.audiusApi),
+    private val sc: SoundCloudDataSource = SoundCloudDataSource()
 ) {
     private val streamCache = mutableMapOf<String, String>()
     private val mutex = Mutex()
@@ -32,11 +34,16 @@ class PlayerRepository(
         val dInner = async {
             try { inner.search(query) } catch (e: Exception) { e.printStackTrace(); emptyList() }
         }
+        val dSc = async {
+            try { sc.search(query) } catch (e: Exception) { e.printStackTrace(); emptyList() }
+        }
         val a = dAudius.await()
         val b = dInner.await()
-        // Audius primeiro (toca garantido), depois YouTube (descoberta rica)
+        val s = dSc.await()
+        // SoundCloud primeiro (mainstream BR que toca), depois Audius,
+        // depois YouTube (descoberta rica)
         val merged = LinkedHashMap<String, Track>()
-        (a + b).forEach { merged.putIfAbsent(it.id, it) }
+        (s + a + b).forEach { merged.putIfAbsent(it.id, it) }
         if (merged.isEmpty()) {
             // último fallback: backend antigo (hoje 1033, mas pode voltar).
             // Tenta 2x com pausa: a 1ª acorda o servidor (cold start),
@@ -77,6 +84,16 @@ class PlayerRepository(
             val url = try { audius.streamUrl(id) } catch (_: Exception) { track.url }
             mutex.withLock { streamCache[track.id] = url }
             return url
+        }
+
+        // 1b) SoundCloud: MP3 progressivo direto, sem servidor
+        if (sc.isSoundCloud(track)) {
+            try {
+                sc.resolveStream(track)?.let { url ->
+                    mutex.withLock { streamCache[track.id] = url }
+                    return url
+                }
+            } catch (e: Exception) { e.printStackTrace() }
         }
 
         // 2) InnerTube music.player (pode dar UNPLAYABLE sem PO Token — tenta mesmo assim)

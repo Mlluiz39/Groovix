@@ -69,7 +69,7 @@ fun SearchScreen(viewModel: MusicViewModel, onTrackClick: () -> Unit) {
         Spacer(Modifier.height(12.dp))
 
         Text(
-            "Busca via YouTube Music (InnerTube, sem API key)",
+            "Busca em SoundCloud + Audius + YouTube (sem API key)",
             color = MutedSteel,
             style = MaterialTheme.typography.labelSmall
         )
