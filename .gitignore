@@ -34,5 +34,11 @@ Thumbs.db
 *.log
 *.tmp
 
+# Server (FastAPI local)
+server/.venv/
+server/__pycache__/
+server/logs/
+server/config.json
+
 # Test
 testsprite_tests/tmp/
