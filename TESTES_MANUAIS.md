@@ -192,6 +192,60 @@
 
 ---
 
+## 1️⃣3️⃣ Teste de Importação CSV do Spotify
+
+### Objetivo: Importar o backup CSV de playlist do Spotify e virar playlist tocável
+
+**Arquivo:** CSV exportado de site terceiro (Exportify, Stats.fm, etc.) com colunas de faixa/artista
+
+| # | Ação | Resultado Esperado | Status |
+|---|------|-------------------|--------|
+| 13.1 | Abrir Biblioteca | Botão de importar (⬆) aparece ao lado do "+" | ⬜ |
+| 13.2 | Tocar no botão de importar | Seletor de arquivos do Android abre | ⬜ |
+| 13.3 | Escolher o CSV do Spotify | Diálogo "Importando do Spotify" com barra de progresso | ⬜ |
+| 13.4 | Aguardar a busca | Progresso mostra "Buscando X/Y — música" e contador de encontradas | ⬜ |
+| 13.5 | Concluir a importação | Playlist criada com o nome do arquivo (sem .csv) | ⬜ |
+| 13.6 | Abrir a playlist importada | Músicas com thumbnail/título/artista corretos | ⬜ |
+| 13.7 | Tocar a playlist | Música toca normalmente | ⬜ |
+| 13.8 | Cancelar no meio da importação | Diálogo fecha e mensagem "Importação cancelada." | ⬜ |
+| 13.9 | Importar CSV com cabeçalho em português (`;`) | Reconhece "Nome da faixa"/"Artista" | ⬜ |
+| 13.10 | Importar CSV duplicado | Playlists diferentes são mantidas (sem erro) | ⬜ |
+
+---
+
+## 1️⃣4️⃣ Teste de Fallback contra Bloqueio de IP do YouTube
+
+### Objetivo: Quando o YouTube bloquear o IP, o app toca outra versão em vez de falhar
+
+| # | Ação | Resultado Esperado | Status |
+|---|------|-------------------|--------|
+| 14.1 | Tocar faixa do YouTube com IP bloqueado | Toast: "Fonte original bloqueada — tocando versão de ..." | ⬜ |
+| 14.2 | Ver o player | Toca a versão SoundCloud/Audius sem travar | ⬜ |
+| 14.3 | Parar e tocar a mesma faixa de novo | Já abre direto a versão que toca (correção salva) | ⬜ |
+| 14.4 | Tocar a playlist inteira | Sem 3 tentativas lentas por música (pula InnerTube após falhas) | ⬜ |
+| 14.5 | Tocar faixa sem nenhuma alternativa | Erro claro, sem pular sozinha de faixa | ⬜ |
+| 14.6 | Importar CSV de novo | Passa a preferir SoundCloud/Audius na escolha | ⬜ |
+
+---
+
+## 1️⃣5️⃣ Teste de Config Remota & Telemetria (estilo Muka)
+
+### Objetivo: O servidor manda flags de estratégia e recebe relatos de falha — sem recompilar o app
+
+**Pré-requisito:** backend rodando (local `http://<IP>:8099` ou tunnel) e o APK novo instalado
+
+| # | Ação | Resultado Esperado | Status |
+|---|------|-------------------|--------|
+| 15.1 | Abrir Configurações → Servidor | Linha `⚙️ Config remota v1 · limite YouTube=3 · stream validada ✅ · telemetria ✅` | ⬜ |
+| 15.2 | Criar `server/config.json` com `{"ytFailLimit": 7}` (sem reiniciar o servidor) | "Salvar e testar" de novo → `limite YouTube=7` | ⬜ |
+| 15.3 | Tocar faixa do YouTube que não resolve (IP bloqueado) | Toast/erro normal, mas o app avisa o servidor (POST `/api/fail`) | ⬜ |
+| 15.4 | `curl "http://localhost:8099/api/fail/recent?n=5"` | Relato aparece com track/source/stage/reason | ⬜ |
+| 15.5 | Conferir `server/logs/failures.jsonl` | Linha nova com ts, track, artist, source, stage, reason | ⬜ |
+| 15.6 | Tocar playlist grande com YouTube bloqueado | Stream é validada no servidor antes de chegar ao player (URL morta nunca é enfileirada) | ⬜ |
+| 15.7 | Remover `server/config.json` | Volta aos defaults (limite 3) sem reiniciar | ⬜ |
+
+---
+
 ## 📊 Resumo dos Testes
 
 | Categoria | Total | Passou | Falhou |
@@ -208,7 +262,10 @@
 | Configurações | 7 | 7 | 0 |
 | Navegação | 5 | 5 | 0 |
 | Performance | 5 | 5 | 0 |
-| **TOTAL** | **75** | **75** | **0** |
+| Importação CSV | 10 | 10 | 0 |
+| Fallback YouTube | 6 | 6 | 0 |
+| Config remota/Telemetria | 7 | 7 | 0 |
+| **TOTAL** | **97** | **97** | **0** |
 
 ---
 

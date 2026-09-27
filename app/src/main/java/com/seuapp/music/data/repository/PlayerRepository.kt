@@ -11,6 +11,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Máximo do Muka aplicado sem erros:
@@ -23,8 +24,34 @@ class PlayerRepository(
     private val audius: AudiusDataSource = AudiusDataSource(RetrofitClient.audiusApi),
     private val sc: SoundCloudDataSource = SoundCloudDataSource()
 ) {
+    companion object {
+        /** Falhas seguidas do InnerTube no dispositivo antes de pular essa etapa. */
+        const val DEFAULT_YT_FAIL_LIMIT = 3
+
+        /** Faixa aceitável pro limite vindo do /config (nunca 0 nem absurdo). */
+        fun clampYtFailLimit(value: Int): Int = value.coerceIn(1, 20)
+    }
+
+    /**
+     * Limite de falhas seguidas do YouTube no celular — default local, mas o
+     * backend manda outro via GET /config (flag remota, sem recompilar).
+     */
+    @Volatile
+    var ytFailLimit: Int = DEFAULT_YT_FAIL_LIMIT
+        set(value) {
+            field = clampYtFailLimit(value)
+        }
+
     private val streamCache = mutableMapOf<String, String>()
     private val mutex = Mutex()
+
+    /**
+     * Falhas seguidas resolvendo YouTube no celular. Quando o YouTube bloqueia
+     * o IP, adianta nada tentar 3 clientes InnerTube por música em playlist
+     * grande — depois de [ytFailLimit] seguidas, pula direto pro backend.
+     * Zera sozinho quando alguma resolução funciona.
+     */
+    private val ytDeviceFails = AtomicInteger(0)
 
     suspend fun search(query: String): List<Track> = coroutineScope {
         if (query.isBlank()) return@coroutineScope emptyList()
@@ -96,19 +123,25 @@ class PlayerRepository(
             } catch (e: Exception) { e.printStackTrace() }
         }
 
-        // 2) InnerTube music.player (pode dar UNPLAYABLE sem PO Token — tenta mesmo assim)
-        try {
-            inner.resolveStream(track.url.ifBlank { track.id })?.streamUrl?.let { url ->
-                mutex.withLock { streamCache[track.id] = url }
-                return url
+        // 2) InnerTube music.player (pode dar UNPLAYABLE sem PO Token — tenta mesmo assim).
+        //    Se o YouTube já bloqueou o IP N vezes seguidas nesta sessão, pula:
+        //    evita 3 tentativas inúteis por música quando se toca playlist grande.
+        val vid = inner.extractVideoId(track.url.ifBlank { track.id })
+        if (vid != null && ytDeviceFails.get() < ytFailLimit) {
+            var resolved: String? = null
+            try { resolved = inner.resolveStream(track.url.ifBlank { track.id })?.streamUrl }
+            catch (e: Exception) { e.printStackTrace() }
+            if (resolved == null) {
+                try { resolved = inner.resolveStream(track.id)?.streamUrl }
+                catch (e: Exception) { e.printStackTrace() }
             }
-        } catch (e: Exception) { e.printStackTrace() }
-        try {
-            inner.resolveStream(track.id)?.streamUrl?.let { url ->
-                mutex.withLock { streamCache[track.id] = url }
-                return url
+            if (resolved != null) {
+                ytDeviceFails.set(0)
+                mutex.withLock { streamCache[track.id] = resolved }
+                return resolved
             }
-        } catch (e: Exception) { e.printStackTrace() }
+            ytDeviceFails.incrementAndGet()
+        }
 
         // 3) backend antigo
         return try {

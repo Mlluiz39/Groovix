@@ -2,6 +2,9 @@ package com.seuapp.music.ui.viewmodel
 
 import android.app.Application
 import android.content.ComponentName
+import android.content.Context
+import android.net.Uri
+import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -21,22 +24,46 @@ import com.seuapp.music.data.local.MusicDatabase
 import com.seuapp.music.data.local.PlaylistEntity
 import com.seuapp.music.data.local.RecentTrackEntity
 import com.seuapp.music.data.local.UserEntity
+import com.seuapp.music.data.match.TrackMatcher
+import com.seuapp.music.data.model.FailReport
 import com.seuapp.music.data.model.Playlist
+import com.seuapp.music.data.model.RemoteConfigResponse
 import com.seuapp.music.data.model.Track
+import com.seuapp.music.data.spotify.SpotifyCsvParser
 import com.seuapp.music.player.MusicService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
+/** Quantas buscas de músicas rodamos em paralelo durante a importação. */
+private const val SEARCH_PARALLEL = 3
+
+/** Estado da importação de playlist do backup CSV do Spotify. */
+data class ImportProgress(
+    val current: Int,
+    val total: Int,
+    val songTitle: String,
+    val found: Int,
+    val playlistName: String
+)
+
 class MusicViewModel(app: Application) : AndroidViewModel(app) {
-    private val api = RetrofitClient.api
+    // get() em vez de val: a base URL pode mudar em Configurações (rebuilt do Retrofit)
+    private val api get() = RetrofitClient.api
     private val playerRepo = PlayerRepository()
     private val gson = Gson()
     private val db = MusicDatabase.getDatabase(app)
     private val dao = db.musicDao()
+
+    private val prefs = app.getSharedPreferences("groovix_config", Context.MODE_PRIVATE)
 
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query
@@ -89,6 +116,35 @@ class MusicViewModel(app: Application) : AndroidViewModel(app) {
     private val _trending = MutableStateFlow<List<Track>>(emptyList())
     val trending: StateFlow<List<Track>> = _trending
 
+    private val _importProgress = MutableStateFlow<ImportProgress?>(null)
+    val importProgress: StateFlow<ImportProgress?> = _importProgress
+
+    private val _importMessage = MutableStateFlow<String?>(null)
+    val importMessage: StateFlow<String?> = _importMessage
+
+    /** URL do backend salva (SharedPreferences) — vira ativa na hora que salvar. */
+    private val _backendUrl = MutableStateFlow(
+        prefs.getString("backend_url", RetrofitClient.DEFAULT_BASE_URL) ?: RetrofitClient.DEFAULT_BASE_URL
+    )
+    val backendUrl: StateFlow<String> = _backendUrl
+
+    /** Feedback do "Salvar e testar" em Configurações. */
+    private val _backendStatus = MutableStateFlow<String?>(null)
+    val backendStatus: StateFlow<String?> = _backendStatus
+
+    /** Flags remotas do backend (GET /config) — null enquanto não chegam. */
+    private val _remoteConfig = MutableStateFlow<RemoteConfigResponse?>(null)
+    val remoteConfig: StateFlow<RemoteConfigResponse?> = _remoteConfig
+
+    /** Resumo da config remota exibido em Configurações. */
+    private val _configStatus = MutableStateFlow<String?>(null)
+    val configStatus: StateFlow<String?> = _configStatus
+
+    /** Anti-spam da telemetria: 1 relato por faixa/estágio a cada 10 min. */
+    private val lastFailSentAt = mutableMapOf<String, Long>()
+
+    private var importJob: Job? = null
+
     private var queue: List<Track> = emptyList()
     private var queueIndex: Int = -1
     private var shuffleOrder: List<Int> = emptyList()
@@ -109,10 +165,19 @@ class MusicViewModel(app: Application) : AndroidViewModel(app) {
         override fun onPlayerError(error: PlaybackException) {
             error.printStackTrace()
             _playbackError.value = error.message ?: "Erro de reprodução"
+            // (B) telemetria: a stream envelheceu/foi bloqueada no meio do play
+            _currentTrack.value?.let {
+                reportFail(it, stage = "playback", reason = error.errorCodeName)
+            }
         }
     }
 
     init {
+        // Ativa a URL de backend salva ANTES de qualquer chamada de rede
+        RetrofitClient.setBaseUrl(_backendUrl.value)
+        // (A) puxa as flags de estratégia do backend (limite YT, telemetria...)
+        fetchRemoteConfig()
+
         val token = SessionToken(app, ComponentName(app, MusicService::class.java))
         val future = MediaController.Builder(app, token).buildAsync()
         controllerFuture = future
@@ -156,6 +221,89 @@ class MusicViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Salva a URL do backend (Configurações), ativa na hora e testa /health.
+     * Retorna false se a URL for inválida (aí nada é salvo).
+     */
+    fun saveAndTestBackend(raw: String): Boolean {
+        val normalized = RetrofitClient.normalizeBaseUrl(raw) ?: return false
+        prefs.edit().putString("backend_url", normalized).apply()
+        RetrofitClient.setBaseUrl(normalized)
+        _backendUrl.value = normalized
+        _backendStatus.value = "Testando ${normalized}..."
+        viewModelScope.launch {
+            _backendStatus.value = try {
+                val h = api.health()
+                if (h.healthy) {
+                    // servidor vivo: revalida as flags remotas na hora
+                    fetchRemoteConfig()
+                    "✅ Backend respondeu — URL salva e ativa"
+                } else "⚠️ Respondeu sem 'ok' no /health — URL salva mesmo assim"
+            } catch (e: Exception) {
+                e.printStackTrace()
+                "❌ Sem resposta (${(e.message ?: "erro").take(90)}). URL salva, mas provavelmente está fora do ar."
+            }
+        }
+        return true
+    }
+
+    /** Volta pra URL padrão do projeto e testa. */
+    fun resetBackendUrl() { saveAndTestBackend(RetrofitClient.DEFAULT_BASE_URL) }
+
+    fun clearBackendStatus() { _backendStatus.value = null }
+
+    /**
+     * (A) Config remota: busca GET /config e aplica as flags no app
+     * (limite de falhas do YouTube, telemetria ligada...). Silenciosa —
+     * backend antigo sem /config ou rede fora => app segue com os defaults.
+     */
+    private fun fetchRemoteConfig() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val cfg = api.config()
+                _remoteConfig.value = cfg
+                cfg.ytFailLimit?.let { playerRepo.ytFailLimit = it }
+                _configStatus.value = buildString {
+                    append("⚙️ Config remota v${cfg.version ?: 1}")
+                    append(" · limite YouTube=${playerRepo.ytFailLimit}")
+                    append(" · stream ${if (cfg.validateStream != false) "validada ✅" else "sem validação"}")
+                    append(" · telemetria ${if (cfg.telemetry != false) "✅" else "❌"}")
+                }
+            } catch (e: Exception) {
+                // sem config remota o app continua normal com os defaults
+                _remoteConfig.value = null
+            }
+        }
+    }
+
+    /**
+     * (B) Telemetria: avisa o backend quando uma faixa falhou, pra a gente
+     * ver em logs/failures.jsonl quando o YouTube mudar a estratégia.
+     * Fire-and-forget e sem spam (1 relato por faixa/estágio a cada 10 min).
+     */
+    private fun reportFail(track: Track, stage: String, reason: String) {
+        if (_remoteConfig.value?.telemetry == false) return
+        val now = System.currentTimeMillis()
+        val key = "${track.id}:$stage"
+        if (now - (lastFailSentAt[key] ?: 0L) < 10 * 60_000L) return
+        if (lastFailSentAt.size > 200) lastFailSentAt.clear()
+        lastFailSentAt[key] = now
+        val report = FailReport(
+            track = track.title.take(300),
+            artist = track.channel.take(300),
+            source = when {
+                track.url.contains("soundcloud", ignoreCase = true) -> "soundcloud"
+                track.url.contains("audius", ignoreCase = true) -> "audius"
+                else -> "youtube"
+            },
+            stage = stage,
+            reason = reason.take(300)
+        )
+        viewModelScope.launch(Dispatchers.IO) {
+            try { api.reportFail(report) } catch (e: Exception) { /* sem servidor, segue o baile */ }
+        }
+    }
+
     fun registerUser(name: String, email: String, password: String) {
         viewModelScope.launch(Dispatchers.IO) {
             dao.insertUser(UserEntity(name = name, email = email, password = password))
@@ -196,6 +344,157 @@ class MusicViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Importa o CSV do backup do Spotify: lê as músicas, busca cada uma aqui no app
+     * (SoundCloud + Audius + YouTube) e salva numa playlist já tocável.
+     * Mostra o progresso em [importProgress] e o resultado em [importMessage].
+     */
+    fun importSpotifyCsv(uri: Uri, displayName: String? = null) {
+        if (importJob?.isActive == true) return
+        val playlistName = displayName
+            ?.substringBeforeLast('.', displayName)
+            ?.trim()
+            .orEmpty()
+            .ifBlank { "Spotify" }
+
+        importJob = viewModelScope.launch(Dispatchers.IO) {
+            _importMessage.value = null
+            _importProgress.value = ImportProgress(0, 0, "Lendo o CSV...", 0, playlistName)
+            try {
+                val csv = getApplication<Application>().contentResolver.openInputStream(uri)
+                    ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                if (csv == null) {
+                    _importMessage.value = "Não consegui abrir o arquivo."
+                    return@launch
+                }
+
+                val songs = SpotifyCsvParser.parse(csv)
+                if (songs.isEmpty()) {
+                    _importMessage.value =
+                        "Nenhuma música encontrada no CSV. Confira se é o arquivo de playlist exportado do Spotify."
+                    return@launch
+                }
+
+                val resolved = ArrayList<Track>(songs.size)
+                var found = 0
+                var done = 0
+
+                for (batch in songs.chunked(SEARCH_PARALLEL)) {
+                    coroutineContext.ensureActive()
+                    val matches = batch.map { song ->
+                        async {
+                            val track = try {
+                                TrackMatcher.pickBest(playerRepo.search(song.query), song.title, song.artist)
+                            } catch (e: CancellationException) { throw e }
+                            catch (e: Exception) { e.printStackTrace(); null }
+                            song to track
+                        }
+                    }.awaitAll()
+
+                    for ((song, track) in matches) {
+                        done++
+                        if (track != null) { resolved.add(track); found++ }
+                        _importProgress.value =
+                            ImportProgress(done, songs.size, song.query, found, playlistName)
+                    }
+                }
+
+                coroutineContext.ensureActive()
+
+                if (resolved.isEmpty()) {
+                    _importMessage.value =
+                        "Nenhuma música encontrada no Groovix. Verifique a internet e tente de novo."
+                    return@launch
+                }
+
+                val unique = resolved.distinctBy { it.id }
+                dao.insertPlaylist(PlaylistEntity(
+                    id = UUID.randomUUID().toString(),
+                    name = playlistName,
+                    tracksJson = gson.toJson(unique)
+                ))
+                loadPlaylists()
+
+                val missing = songs.size - found
+                _importMessage.value = if (missing > 0) {
+                    "Playlist \"$playlistName\" criada com ${unique.size} músicas.\n" +
+                        "$missing não encontradas aqui no Groovix."
+                } else {
+                    "Playlist \"$playlistName\" criada com ${unique.size} músicas. Pronta pra tocar! 🎧"
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _importMessage.value = "Falha ao importar: ${e.message ?: "erro desconhecido"}"
+            } finally {
+                _importProgress.value = null
+            }
+        }
+    }
+
+    fun cancelImport() {
+        val job = importJob
+        if (job?.isActive == true) {
+            job.cancel()
+            _importMessage.value = "Importação cancelada."
+        }
+        _importProgress.value = null
+    }
+
+    fun clearImportMessage() { _importMessage.value = null }
+
+    /**
+     * Quando o stream não veio (YouTube bloqueou o IP), procura uma versão da
+     * mesma música em fonte que toca (SoundCloud/Audius).
+     */
+    private suspend fun findPlayableAlternative(track: Track): Track? {
+        val results = try {
+            playerRepo.search("${track.title} ${track.channel}".trim())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            e.printStackTrace(); emptyList()
+        }
+        return TrackMatcher.pickAlternative(results, track, track.title, track.channel)
+    }
+
+    /** Troca a faixa bloqueada pela que toca, na fila e nas listas da UI. */
+    private fun swapCurrentTrack(old: Track, new: Track) {
+        queue = queue.mapIndexed { i, t -> if (i == queueIndex) new else t }
+        if (_tracks.value.any { it.id == old.id }) {
+            _tracks.value = _tracks.value.map { if (it.id == old.id) new else it }
+        }
+        _currentTrack.value = new
+        // Persiste o conserto em playlists e favoritos (na próxima já abre a boa)
+        viewModelScope.launch(Dispatchers.IO) { repairSavedTracks(old, new) }
+    }
+
+    /** Substitui a faixa bloqueada pela que toca em todas as playlists/favoritos salvos. */
+    private suspend fun repairSavedTracks(old: Track, new: Track) {
+        try {
+            dao.getAllPlaylists().forEach { playlist ->
+                val tracks = try {
+                    gson.fromJson(playlist.tracksJson, Array<Track>::class.java)?.toMutableList()
+                } catch (_: Exception) { null } ?: return@forEach
+                val idx = tracks.indexOfFirst { it.id == old.id }
+                if (idx < 0) return@forEach
+                tracks[idx] = new
+                dao.insertPlaylist(playlist.copy(tracksJson = gson.toJson(tracks)))
+            }
+            if (dao.isFavorite(old.id)) {
+                dao.deleteFavorite(old.id)
+                dao.insertFavorite(FavoriteEntity(
+                    trackId = new.id, id = new.id, title = new.title,
+                    channel = new.channel, duration = new.duration,
+                    thumbnail = new.thumbnail, url = new.url
+                ))
+            }
+            loadPlaylists()
+            loadFavorites()
+        } catch (e: Exception) { e.printStackTrace() }
+    }
+
     // Busca oficial YouTube Data API v3. Passe a key via BuildConfig/local.properties.
     fun searchYoutube(apiKey: String) {
         if (_query.value.isBlank() || apiKey.isBlank()) return
@@ -216,9 +515,7 @@ class MusicViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun isYoutubeTrack(track: Track): Boolean =
-        track.id.matches(Regex("[A-Za-z0-9_-]{6,}")) &&
-            (track.url.contains("youtube.com") || track.url.contains("youtu.be"))
+    fun isYoutubeTrack(track: Track): Boolean = TrackMatcher.isYoutube(track)
 
     fun playTrack(track: Track) {
         try {
@@ -425,17 +722,38 @@ class MusicViewModel(app: Application) : AndroidViewModel(app) {
         _currentTrack.value = track
         _playbackError.value = null
         viewModelScope.launch {
-            val streamUrl = resolveUrl(track)
+            var playing = track
+            var streamUrl = resolveUrl(playing)
+            if (streamUrl == null) {
+                // YouTube bloqueou o IP (ou backend off): tenta uma versão da
+                // mesma música em fonte que toca (SoundCloud/Audius)
+                reportFail(playing, stage = "resolve", reason = "nenhuma fonte resolveu a stream")
+                val alt = findPlayableAlternative(playing)
+                if (alt != null) {
+                    val altUrl = resolveUrl(alt)
+                    if (altUrl != null) {
+                        swapCurrentTrack(playing, alt)
+                        playing = alt
+                        streamUrl = altUrl
+                        Toast.makeText(
+                            getApplication<Application>(),
+                            "Fonte original bloqueada — tocando versão de ${alt.channel.ifBlank { "outra fonte" }}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
             if (streamUrl == null) {
                 // NÃO pula sozinho (era isso que "passava todas da pasta"):
                 // para na faixa e mostra o motivo para debug
+                reportFail(playing, stage = "fallback", reason = "nem a alternativa tocou")
                 _playbackError.value =
-                    "Sem stream para ${track.title} (${track.id}). " +
+                    "Sem stream para ${playing.title} (${playing.id}). " +
                     "YouTube bloqueou o player neste IP ou backend off. Tente outra faixa ou Wi-Fi/4G."
                 return@launch
             }
             _playbackError.value = null
-            val item = MediaItem.Builder().setMediaId(track.id).setUri(streamUrl).build()
+            val item = MediaItem.Builder().setMediaId(playing.id).setUri(streamUrl).build()
             val c = controller
             if (c == null) {
                 pendingPlay = {
@@ -448,7 +766,7 @@ class MusicViewModel(app: Application) : AndroidViewModel(app) {
                 c.prepare()
                 c.play()
             }
-            saveRecentTrack(track)
+            saveRecentTrack(playing)
         }
     }
 

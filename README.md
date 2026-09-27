@@ -34,6 +34,8 @@
 - Busca de conteúdo via API REST
 - Resultados com thumbnail, título e duração
 - Indicador de carregamento animado
+- Backend com URL configurável em **Configurações → Servidor** (troca de servidor sem rebuild, com teste de `/health`)
+- **Config remota + telemetria (estilo Muka):** flags do servidor (limite de falhas do YouTube, validação de stream) aplicadas sem recompilar, e relato automático quando uma faixa falha
 
 ### 🎵 Player Completo
 - Reprodução contínua em background
@@ -41,6 +43,8 @@
 - Shuffle e repeat com feedback visual
 - Barra de progresso com gradiente neon
 - Animação pulsante na capa do álbum
+- **Fallback anti-bloqueio:** se o YouTube bloquear o IP, busca e toca a versão SoundCloud/Audius (e corrige a playlist salva)
+- **Stream validada antes de tocar:** o servidor checa a URL (Range 1 byte) e rota os clientes do YouTube (android/web/tv/embedded) em cascata quando um leva 403
 
 </td>
 <td width="50%">
@@ -48,6 +52,7 @@
 ### 📚 Biblioteca
 - Criação de playlists customizadas
 - Adição/remoção de itens
+- **Importação de playlist do Spotify via CSV** (backup de terceiros) com busca automática de cada música no app
 - Sistema de favoritos
 - Histórico de reprodução
 

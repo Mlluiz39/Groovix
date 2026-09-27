@@ -1,5 +1,8 @@
 package com.seuapp.music.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -16,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -25,16 +29,38 @@ import com.seuapp.music.data.model.Track
 import com.seuapp.music.ui.theme.*
 import com.seuapp.music.ui.viewmodel.MusicViewModel
 
+/** Mimes que o seletor de arquivos aceita pro backup CSV do Spotify. */
+private val CSV_MIME_TYPES = arrayOf(
+    "text/*",
+    "application/csv",
+    "application/vnd.ms-excel",
+    "application/octet-stream"
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlaylistScreen(viewModel: MusicViewModel, onTrackClick: (Track) -> Unit) {
     val playlists by viewModel.playlists.collectAsState()
     val favorites by viewModel.favorites.collectAsState()
+    val importProgress by viewModel.importProgress.collectAsState()
+    val importMessage by viewModel.importMessage.collectAsState()
     var showSaveDialog by remember { mutableStateOf(false) }
     var showAddToDialog by remember { mutableStateOf<Track?>(null) }
     var newName by remember { mutableStateOf("") }
     var tab by remember { mutableStateOf(0) }
     var selectedPlaylist by remember { mutableStateOf<Playlist?>(null) }
+
+    val context = LocalContext.current
+    val csvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let {
+            val displayName = runCatching {
+                context.contentResolver
+                    .query(it, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+                    ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+            }.getOrNull()
+            viewModel.importSpotifyCsv(it, displayName)
+        }
+    }
 
     if (selectedPlaylist != null) {
         PlaylistDetailScreen(
@@ -51,8 +77,13 @@ fun PlaylistScreen(viewModel: MusicViewModel, onTrackClick: (Track) -> Unit) {
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Biblioteca", style = MaterialTheme.typography.headlineLarge, color = OffWhite)
-                    Surface(onClick = { showSaveDialog = true }, shape = CircleShape, color = ElectricCyan) {
-                        Icon(Icons.Default.Add, "Nova Playlist", tint = OnCyanDark, modifier = Modifier.padding(8.dp).size(24.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Surface(onClick = { csvLauncher.launch(CSV_MIME_TYPES) }, shape = CircleShape, color = NavyGlass) {
+                            Icon(Icons.Default.FileUpload, "Importar CSV do Spotify", tint = ElectricCyan, modifier = Modifier.padding(8.dp).size(24.dp))
+                        }
+                        Surface(onClick = { showSaveDialog = true }, shape = CircleShape, color = ElectricCyan) {
+                            Icon(Icons.Default.Add, "Nova Playlist", tint = OnCyanDark, modifier = Modifier.padding(8.dp).size(24.dp))
+                        }
                     }
                 }
                 Spacer(Modifier.height(8.dp))
@@ -69,7 +100,20 @@ fun PlaylistScreen(viewModel: MusicViewModel, onTrackClick: (Track) -> Unit) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Icon(Icons.Default.LibraryMusic, null, tint = MutedSteel, modifier = Modifier.size(56.dp))
                                 Spacer(Modifier.height(16.dp))
-                                Text("Nenhuma playlist ainda.\nCrie uma e adicione músicas!", style = MaterialTheme.typography.bodyLarge, color = SteelText, textAlign = TextAlign.Center)
+                                Text("Nenhuma playlist ainda.\nImporte o CSV do Spotify ou crie uma!", style = MaterialTheme.typography.bodyLarge, color = SteelText, textAlign = TextAlign.Center)
+                                Spacer(Modifier.height(16.dp))
+                                Surface(
+                                    onClick = { csvLauncher.launch(CSV_MIME_TYPES) },
+                                    shape = RoundedCornerShape(50),
+                                    color = NavyGlass,
+                                    border = BorderStroke(1.dp, ElectricCyan.copy(alpha = 0.4f))
+                                ) {
+                                    Row(Modifier.padding(horizontal = 18.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.FileUpload, null, tint = ElectricCyan, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Importar CSV do Spotify", color = ElectricCyan, style = MaterialTheme.typography.bodyMedium)
+                                    }
+                                }
                             }
                         }
                     }
@@ -149,6 +193,46 @@ fun PlaylistScreen(viewModel: MusicViewModel, onTrackClick: (Track) -> Unit) {
             },
             confirmButton = {},
             dismissButton = { TextButton(onClick = { showAddToDialog = null }) { Text("Cancelar", color = SteelText) } }
+        )
+    }
+
+    importProgress?.let { p ->
+        AlertDialog(
+            onDismissRequest = {},
+            containerColor = SteelNavy, titleContentColor = OffWhite, textContentColor = SteelText,
+            title = { Text("Importando do Spotify") },
+            text = {
+                Column {
+                    Text(
+                        if (p.total > 0) "Buscando ${p.current}/${p.total} — ${p.songTitle}" else p.songTitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = OffWhite,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    LinearProgressIndicator(
+                        progress = { if (p.total > 0) p.current.toFloat() / p.total else 0f },
+                        color = ElectricCyan,
+                        trackColor = NavyGlass,
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(50))
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text("${p.found} encontradas", style = MaterialTheme.typography.labelSmall, color = MutedSteel)
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { viewModel.cancelImport() }) { Text("Cancelar", color = SteelText) } }
+        )
+    }
+
+    importMessage?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { viewModel.clearImportMessage() },
+            containerColor = SteelNavy, titleContentColor = OffWhite, textContentColor = SteelText,
+            title = { Text("Importar CSV do Spotify") },
+            text = { Text(msg, style = MaterialTheme.typography.bodyMedium, color = SteelText) },
+            confirmButton = { TextButton(onClick = { viewModel.clearImportMessage() }) { Text("OK", color = ElectricCyan) } }
         )
     }
 }
