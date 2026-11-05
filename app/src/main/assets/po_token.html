@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title></title>
+<script>
+"use strict";
+
+/*
+ * Ponte mínima com o BotGuard do YouTube.
+ *
+ * O desafio (Create) e o token de integridade (GenerateIT) são buscados pelo
+ * lado Kotlin; este arquivo só executa o programa do BotGuard e minta o
+ * poToken. É a mesma sequência pública usada por yt-dlp/bgutil e pelo NewPipe,
+ * reescrita aqui sem dependências externas.
+ */
+
+function botguardLoad(challenge) {
+  var vm = window[challenge.globalName];
+  if (!vm) throw new Error("[botguard] VM not found");
+  if (!vm.a) throw new Error("[botguard] could not load program");
+
+  var functions = {};
+  var syncSnapshot = vm.a(
+    challenge.program,
+    function (asyncSnapshot, shutdown, passEvent, checkCamera) {
+      functions.asyncSnapshot = asyncSnapshot;
+      functions.shutdown = shutdown;
+      functions.passEvent = passEvent;
+      functions.checkCamera = checkCamera;
+    },
+    true,
+    undefined,
+    function () { /* no-op */ },
+    [[], []]
+  )[0];
+
+  return new Promise(function (resolve, reject) {
+    var ticks = 0;
+    var timer = setInterval(function () {
+      if (functions.asyncSnapshot) {
+        clearInterval(timer);
+        resolve({ snapshot: functions.asyncSnapshot, sync: syncSnapshot });
+      } else if (++ticks > 10000) {
+        clearInterval(timer);
+        reject(new Error("[botguard] asyncSnapshot never became available"));
+      }
+    }, 1);
+  });
+}
+
+function runBotGuard(challenge) {
+  var source = challenge.interpreterJavascript
+    ? challenge.interpreterJavascript.privateDoNotAccessOrElseSafeScriptWrappedValue
+    : null;
+  if (source) {
+    new Function(source)();
+  } else {
+    throw new Error("[botguard] could not load VM");
+  }
+
+  var signalOutput = [];
+  return botguardLoad(challenge).then(function (botguard) {
+    return new Promise(function (resolve, reject) {
+      try {
+        var takeSnapshot = botguard.snapshot;
+        takeSnapshot(
+          function (response) { resolve(response); },
+          [undefined, undefined, signalOutput, undefined]
+        );
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }).then(function (response) {
+    return { botguardResponse: response, webPoSignalOutput: signalOutput };
+  });
+}
+
+function obtainPoToken(signalOutput, integrityToken, identifier) {
+  var getMinter = signalOutput[0];
+  if (!getMinter) throw new Error("PMD:Undefined");
+
+  var mint = getMinter(integrityToken);
+  if (!(mint instanceof Function)) throw new Error("APF:Failed");
+
+  var result = mint(identifier);
+  if (!result) throw new Error("YNJ:Undefined");
+  if (!(result instanceof Uint8Array)) throw new Error("ODM:Invalid");
+
+  return result;
+}
+</script>
+</head>
+<body></body>
+</html>

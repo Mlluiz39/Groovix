@@ -3,6 +3,7 @@ package com.seuapp.music.data.api
 import com.google.gson.JsonObject
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.Query
 import retrofit2.http.Url
@@ -11,9 +12,9 @@ import retrofit2.http.Url
  * InnerTube direto, mesmo caminho que o Muka usa por baixo do JsEngine:
  * youtubei/v1/search + player + next, sem API key oficial.
  *
- * Clientes usados:
- * - WEB_REMIX (music.youtube.com) para busca
- * - ANDROID_TESTSUITE para player (retorna URL direta, sem decipher)
+ * Busca/relacionados: WEB_REMIX (music.youtube.com).
+ * Player: VISIONOS devolve URL direta; web/TV entram com PO token quando
+ * o visionOS não entrega formato tocável.
  */
 interface InnerTubeApi {
 
@@ -28,6 +29,10 @@ interface InnerTubeApi {
     suspend fun player(
         @Query("key") key: String = InnerTubeClient.WEB_KEY,
         @Query("prettyPrint") prettyPrint: Boolean = false,
+        @Header("X-Youtube-Client-Name") clientId: String? = null,
+        @Header("X-Youtube-Client-Version") clientVersion: String? = null,
+        @Header("User-Agent") userAgent: String? = null,
+        @Header("X-Goog-Api-Format-Version") apiFormatVersion: String? = null,
         @Body body: JsonObject
     ): JsonObject
 

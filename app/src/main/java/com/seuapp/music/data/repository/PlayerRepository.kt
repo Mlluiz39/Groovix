@@ -1,5 +1,6 @@
 package com.seuapp.music.data.repository
 
+import android.content.Context
 import com.seuapp.music.data.api.InnerTubeClient
 import com.seuapp.music.data.api.RetrofitClient
 import com.seuapp.music.data.innerTube.AudiusDataSource
@@ -20,7 +21,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * - resolve: Audius stream direto -> InnerTube player -> backend antigo.
  */
 class PlayerRepository(
-    private val inner: InnerTubeDataSource = InnerTubeDataSource(InnerTubeClient.api),
+    private val appContext: Context,
+    private val inner: InnerTubeDataSource = InnerTubeDataSource(InnerTubeClient.api, appContext),
     private val audius: AudiusDataSource = AudiusDataSource(RetrofitClient.audiusApi),
     private val sc: SoundCloudDataSource = SoundCloudDataSource()
 ) {
@@ -128,12 +130,13 @@ class PlayerRepository(
         //    evita 3 tentativas inúteis por música quando se toca playlist grande.
         val vid = inner.extractVideoId(track.url.ifBlank { track.id })
         if (vid != null && ytDeviceFails.get() < ytFailLimit) {
-            var resolved: String? = null
-            try { resolved = inner.resolveStream(track.url.ifBlank { track.id })?.streamUrl }
-            catch (e: Exception) { e.printStackTrace() }
-            if (resolved == null) {
-                try { resolved = inner.resolveStream(track.id)?.streamUrl }
-                catch (e: Exception) { e.printStackTrace() }
+            // Uma única resolução: o poToken é gerado por vídeo, então repetir
+            // a mesma chamada só gastaria tempo (e outro token).
+            val resolved = try {
+                inner.resolveStream(track.url.ifBlank { track.id })?.streamUrl
+            } catch (e: Exception) {
+                e.printStackTrace()
+                null
             }
             if (resolved != null) {
                 ytDeviceFails.set(0)

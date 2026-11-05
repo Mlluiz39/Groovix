@@ -1,10 +1,14 @@
 package com.seuapp.music.data.innerTube
 
+import android.content.Context
+import android.util.Log
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.seuapp.music.data.api.InnerTubeApi
+import com.seuapp.music.data.api.InnerTubeClient
 import com.seuapp.music.data.model.Track
+import com.seuapp.music.data.youtube.PoTokenProvider
 
 /**
  * Equivalente aos DataServices do Muka:
@@ -14,8 +18,145 @@ import com.seuapp.music.data.model.Track
  * Tudo via InnerTube, sem depender do dex/JS baixado do api.ddsiiwid.com.
  */
 class InnerTubeDataSource(
-    private val api: InnerTubeApi
+    private val api: InnerTubeApi,
+    private val appContext: Context? = null
 ) {
+
+    private companion object {
+        const val TAG = "GroovixInnerTube"
+
+        /**
+         * Chave pública do web client (funciona para todos os clients InnerTube
+         * atuais; a antiga chave ANDROID foi descontinuada).
+         */
+        const val WEB_KEY = InnerTubeClient.WEB_KEY
+
+        const val DESKTOP_UA = InnerTubeClient.DESKTOP_UA
+
+        const val VISIONOS_UA =
+            "com.google.visionos.youtube/1.04(RealityDevice17,1; U; CPU visionOS " +
+                "26_6_0 like Mac OS X; BR)"
+
+        const val ANDROID_UA =
+            "com.google.android.youtube/21.26.364 (Linux; U; Android 11) gzip"
+
+        const val TV_UA =
+            "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/25.lts.30.1034943-gold " +
+                "(unlike Gecko), Unknown_TV_Unknown_0/Unknown (Unknown, Unknown)"
+
+        const val WEB_EMBED_UA =
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 " +
+                "(KHTML, like Gecko) Version/15.5 Safari/605.1.15,gzip(gfe)"
+
+        /**
+         * VISIONOS devolve `url` direta e não exige poToken (é o cliente que o
+         * NewPipeExtractor usa hoje). Primeira tentativa, sem custo de WebView.
+         */
+        val VISIONOS = ClientSpec(
+            name = "VISIONOS",
+            version = "1.04",
+            clientId = "101",
+            key = WEB_KEY,
+            userAgent = VISIONOS_UA,
+            osName = "visionOS",
+            osVersion = "26.6.0.23O770",
+            deviceMake = "Apple",
+            deviceModel = "RealityDevice17,1",
+            clientScreen = "WATCH",
+            apiFormatVersion = "2",
+        )
+
+        /** Web/tv embedded: exigem o poToken gerado pelo BotGuard do WebView. */
+        val TV_SIMPLY = ClientSpec(
+            name = "TVHTML5_SIMPLY",
+            version = "1.0",
+            clientId = "75",
+            key = WEB_KEY,
+            embedded = true,
+        )
+
+        val WEB = ClientSpec(
+            name = "WEB",
+            version = "2.20240101.00.00", // substituído pela versão viva da home
+            clientId = "1",
+            key = WEB_KEY,
+            userAgent = DESKTOP_UA,
+        )
+
+        val WEB_EMBEDDED = ClientSpec(
+            name = "WEB_EMBEDDED_PLAYER",
+            version = "2.20240101.00.00",
+            clientId = "56",
+            key = WEB_KEY,
+            embedded = true,
+            userAgent = WEB_EMBED_UA,
+        )
+
+        /** Sem poToken: só funcionam se o YouTube ainda liberar o IP. */
+        val ANDROID_VR = ClientSpec(
+            name = "ANDROID_VR",
+            version = "1.65.10",
+            clientId = "28",
+            key = WEB_KEY,
+            userAgent =
+                "com.google.android.apps.youtube.vr.oculus/1.65.10 " +
+                    "(Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
+            android = true,
+            sdk = 32,
+            osName = "Android",
+            osVersion = "12L",
+            deviceMake = "Oculus",
+            deviceModel = "Quest 3",
+            gvsPot = true,
+        )
+
+        val ANDROID = ClientSpec(
+            name = "ANDROID",
+            version = "21.26.364",
+            clientId = "3",
+            key = WEB_KEY,
+            userAgent = ANDROID_UA,
+            android = true,
+            sdk = 30,
+            osName = "Android",
+            osVersion = "11",
+        )
+
+        val TV = ClientSpec(
+            name = "TVHTML5",
+            version = "7.20260707.07.00",
+            clientId = "7",
+            key = WEB_KEY,
+            userAgent = TV_UA,
+        )
+
+        val WEB_REMIX = ClientSpec(
+            name = "WEB_REMIX",
+            version = "1.20240101.00.00",
+            clientId = "67",
+            key = WEB_KEY,
+        )
+    }
+
+    private data class ClientSpec(
+        val name: String,
+        val version: String,
+        val clientId: String,
+        val key: String,
+        val userAgent: String? = null,
+        val poToken: String? = null,
+        val embedded: Boolean = false,
+        val android: Boolean = false,
+        val osName: String? = null,
+        val osVersion: String? = null,
+        val sdk: Int? = null,
+        val deviceMake: String? = null,
+        val deviceModel: String? = null,
+        val clientScreen: String? = null,
+        val apiFormatVersion: String? = null,
+        /** Anexar o streaming poToken como `&pot=` na URL de mídia. */
+        val gvsPot: Boolean = false,
+    )
 
     // ---------- bodies ----------
 
@@ -52,34 +193,57 @@ class InnerTubeDataSource(
         return body
     }
 
-    private fun playerBody(videoId: String, clientName: String, clientVersion: String): JsonObject {
+    private fun playerBody(
+        videoId: String,
+        spec: ClientSpec,
+        visitorData: String? = null,
+    ): JsonObject {
         val body = JsonObject()
         body.addProperty("videoId", videoId)
-        val context = JsonObject().apply {
-            val client = JsonObject().apply {
-                addProperty("clientName", clientName)
-                addProperty("clientVersion", clientVersion)
-                if (clientName.startsWith("ANDROID")) {
-                    addProperty("androidSdkVersion", 34)
-                } else {
-                    addProperty(
-                        "userAgent",
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-                            "(KHTML, like Gecko) Chrome/126.0.6478.61 Safari/537.36"
-                    )
-                    addProperty("originalUrl", "https://music.youtube.com/")
-                }
-                addProperty("hl", "pt")
-                addProperty("gl", "BR")
-            }
-            add("client", client)
+        // NewPipe/yt-dlp mandam um nonce de playback; sem ele alguns clientes
+        // respondem com playabilityStatus estranho.
+        body.addProperty("cpn", contentPlaybackNonce())
+
+        val client = JsonObject().apply {
+            addProperty("clientName", spec.name)
+            addProperty("clientVersion", spec.version)
+            addProperty("hl", "pt")
+            addProperty("gl", "BR")
+            visitorData?.let { addProperty("visitorData", it) }
+
+            spec.userAgent?.let { addProperty("userAgent", it) }
+            spec.deviceMake?.let { addProperty("deviceMake", it) }
+            spec.deviceModel?.let { addProperty("deviceModel", it) }
+            spec.osName?.let { addProperty("osName", it) }
+            spec.osVersion?.let { addProperty("osVersion", it) }
+            spec.sdk?.let { addProperty("androidSdkVersion", it) }
+
+            // `originalUrl` só faz sentido para clients de navegador.
+            if (!spec.android) addProperty("originalUrl", "https://music.youtube.com/")
+            val screen = spec.clientScreen ?: if (spec.embedded) "EMBED" else null
+            screen?.let { addProperty("clientScreen", it) }
         }
-        body.add("context", context)
+
+        body.add("context", JsonObject().apply { add("client", client) })
+
+        if (spec.embedded) {
+            body.add("thirdParty", JsonObject().apply {
+                addProperty("embedUrl", "https://www.youtube.com/")
+            })
+        }
+
         val cpb = JsonObject()
         cpb.addProperty("html5Preference", "HTML5_PREF_WANTS")
         body.add("contentPlaybackContext", cpb)
         body.addProperty("contentCheckOk", true)
         body.addProperty("racyCheckOk", true)
+
+        // Faz o cliente web/TV devolver URL de mídia em vez de só SABR.
+        spec.poToken?.let { token ->
+            body.add("serviceIntegrityDimensions", JsonObject().apply {
+                addProperty("poToken", token)
+            })
+        }
         return body
     }
 
@@ -261,24 +425,128 @@ class InnerTubeDataSource(
 
     suspend fun resolveStream(videoIdOrUrl: String): StreamInfo? {
         val videoId = extractVideoId(videoIdOrUrl) ?: return null
-        // Cada cliente tem sua key (bug anterior usava a key WEB pra tudo -> 400).
-        // Ordem: ANDROID primeiro (url direta), depois WEB_REMIX, depois TV.
-        val attempts = listOf(
-            Triple("ANDROID", "19.09.37", "AIzaSyA8eiZmM1FaDVjRy-df2KTyQ"),
-            Triple("WEB_REMIX", "1.20240101.00.00", "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"),
-            Triple("TVHTML5", "7.20240101.00.00", "AIzaSyDc7l7vT-8QbR0F8v0q0q0q0q0q0q0q0q0")
-        )
-        for ((cli, ver, key) in attempts) {
+
+        val ctx = appContext
+        // O VISIONOS exige um visitorData válido mesmo sem poToken.
+        val vd = if (ctx != null) {
             try {
-                val res = api.player(key = key, body = playerBody(videoId, cli, ver))
-                val parsed = parsePlayer(res, videoId)
-                if (parsed != null) return parsed
+                PoTokenProvider.sessionVisitorData(ctx)
+            } catch (c: kotlinx.coroutines.CancellationException) {
+                throw c
             } catch (e: Exception) {
-                // tenta o próximo cliente (400/404/UNPLAYABLE)
-                continue
+                Log.w(TAG, "visitorData: ${e.message}")
+                null
             }
+        } else {
+            null
+        }
+
+        // 1) VISIONOS: caminho do NewPipeExtractor atual. Devolve `url` direta
+        //    e não exige poToken — por isso vem primeiro (resposta instantânea;
+        //    o WebView do BotGuard só entra se este cliente falhar).
+        play(videoId, VISIONOS, visitorData = vd)?.let { return it }
+
+        // 2) Caminho atestado: o WebView gera o poToken (web) e os clients
+        //    web/TV passam a devolver URL em vez de SABR.
+        val pot = if (ctx != null) {
+            try {
+                PoTokenProvider.get(ctx, videoId)
+            } catch (c: kotlinx.coroutines.CancellationException) {
+                throw c
+            } catch (e: Exception) {
+                Log.w(TAG, "poToken: ${e.message}")
+                null
+            }
+        } else {
+            null
+        }
+
+        val attempts = ArrayList<ClientSpec>(8)
+        if (pot != null) {
+            // Clients "web": aceitam o poToken do BotGuard e precisam do
+            // streaming token anexado na URL (`&pot=`).
+            attempts += TV_SIMPLY.copy(
+                poToken = pot.playerToken,
+                gvsPot = true,
+            )
+            attempts += WEB.copy(
+                version = pot.clientVersion,
+                poToken = pot.playerToken,
+                gvsPot = true,
+            )
+            attempts += WEB_EMBEDDED.copy(
+                version = pot.clientVersion,
+                poToken = pot.playerToken,
+                gvsPot = true,
+            )
+            // ANDROID_VR não usa player token, mas aceita o GVS token na URL
+            // e (importante) não exige decifrar o parâmetro `n`.
+            attempts += ANDROID_VR
+        }
+        // Fallbacks sem token: podem virar SABR/bloqueio, mas não custam nada.
+        attempts += ANDROID
+        attempts += TV
+        attempts += WEB_REMIX
+
+        for (spec in attempts) {
+            play(videoId, spec, visitorData = pot?.visitorData, gvsToken = pot?.streamingToken)
+                ?.let { return it }
         }
         return null
+    }
+
+    /** Nonce de playback de 16 chars (mesmo formato usado pelo player web). */
+    private fun contentPlaybackNonce(): String =
+        java.util.UUID.randomUUID().toString().replace("-", "").take(16)
+
+    /** Uma tentativa de player; `null` significa "tenta o próximo cliente". */
+    private suspend fun play(
+        videoId: String,
+        spec: ClientSpec,
+        visitorData: String? = null,
+        gvsToken: String? = null,
+    ): StreamInfo? {
+        return try {
+            val response = api.player(
+                key = spec.key,
+                clientId = spec.clientId,
+                clientVersion = spec.version,
+                userAgent = spec.userAgent,
+                apiFormatVersion = spec.apiFormatVersion,
+                body = playerBody(videoId, spec, visitorData),
+            )
+            val parsed = parsePlayer(response, videoId)
+            val status = response.obj("playabilityStatus")?.str("status")
+            val reason = response.obj("playabilityStatus")?.str("reason")
+            Log.i(
+                TAG,
+                "client=${spec.name} status=$status reason=${reason ?: "-"} " +
+                    "url=${parsed != null} itag=${parsed?.itag ?: 0} " +
+                    "sabr=${hasSabr(response)} pot=${spec.poToken != null}"
+            )
+            if (parsed != null && spec.gvsPot && gvsToken != null) {
+                parsed.copy(streamUrl = appendPot(parsed.streamUrl, gvsToken))
+            } else {
+                parsed
+            }
+        } catch (c: kotlinx.coroutines.CancellationException) {
+            throw c
+        } catch (e: Exception) {
+            // tenta o próximo cliente (400/404/UNPLAYABLE)
+            Log.w(TAG, "client=${spec.name} falhou: ${e.message}")
+            null
+        }
+    }
+
+    /** O cliente respondeu com SABR (sem URL direta) em vez de formatos tocáveis. */
+    private fun hasSabr(root: JsonObject): Boolean =
+        root.obj("streamingData")?.has("serverAbrStreamingUrl") == true
+
+    /** Acrescenta `pot` à URL de mídia sem duplicar se o player já mandou um. */
+    private fun appendPot(url: String, poToken: String): String {
+        if (url.contains("pot=")) return url
+        val separator = if (url.contains('?')) '&' else '?'
+        return url + separator + "pot=" + poToken
     }
 
     suspend fun related(videoIdOrUrl: String): List<Track> {

@@ -58,7 +58,7 @@ data class ImportProgress(
 class MusicViewModel(app: Application) : AndroidViewModel(app) {
     // get() em vez de val: a base URL pode mudar em Configurações (rebuilt do Retrofit)
     private val api get() = RetrofitClient.api
-    private val playerRepo = PlayerRepository()
+    private val playerRepo = PlayerRepository(app)
     private val gson = Gson()
     private val db = MusicDatabase.getDatabase(app)
     private val dao = db.musicDao()

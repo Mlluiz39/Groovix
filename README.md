@@ -44,6 +44,7 @@
 - Barra de progresso com gradiente neon
 - Animação pulsante na capa do álbum
 - **Fallback anti-bloqueio:** se o YouTube bloquear o IP, busca e toca a versão SoundCloud/Audius (e corrige a playlist salva)
+- **YouTube direto no aparelho:** o resolver usa o cliente `VISIONOS` do InnerTube (mesma via do NewPipeExtractor), que devolve URL de áudio tocável sem precisar de servidor; se ele falhar, um WebView oculto gera o **PO Token** (BotGuard) e tenta os clientes web/TV
 - **Stream validada antes de tocar:** o servidor checa a URL (Range 1 byte) e rota os clientes do YouTube (android/web/tv/embedded) em cascata quando um leva 403
 
 </td>

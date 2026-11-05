@@ -9,29 +9,45 @@ import retrofit2.converter.scalars.ScalarsConverterFactory
 import java.util.concurrent.TimeUnit
 
 /**
- * Cliente HTTP com os mesmos headers que o Muka envia
- * (visto em PlatformHttpServiceImpl / NetworkManagerHotfix):
- * Chrome 126 Windows + Origin/Referer youtube.
+ * Cliente HTTP dos endpoints InnerTube.
+ *
+ * Os headers `X-Youtube-Client-Name/Version` precisam combinar com o
+ * `context.client` do body, senão o YouTube responde num client diferente do
+ * pedido (era o que acontecia: tudo ia como WEB_REMIX 1.20240101).
+ * Por isso eles são opcionais aqui e cada chamada sobrescreve quando precisa.
  */
 object InnerTubeClient {
 
     const val BASE_URL = "https://www.youtube.com/"
     const val WEB_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
 
-    private const val UA =
+    /** WEB_REMIX: usado por search/next. */
+    const val DEFAULT_CLIENT_ID = "67"
+    const val DEFAULT_CLIENT_VERSION = "1.20240101.00.00"
+
+    const val DESKTOP_UA =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/126.0.6478.61 Safari/537.36"
 
     private val headerInterceptor = Interceptor { chain ->
-        val req = chain.request().newBuilder()
-            .header("User-Agent", UA)
-            .header("Origin", "https://www.youtube.com")
-            .header("Referer", "https://www.youtube.com/")
-            .header("Accept-Language", "en-US,en;q=0.9")
-            .header("X-Youtube-Client-Name", "67")
-            .header("X-Youtube-Client-Version", "1.20240101.00.00")
-            .build()
-        chain.proceed(req)
+        val original = chain.request()
+        val builder = original.newBuilder()
+
+        // Só preenche o que a chamada não definiu.
+        if (original.header("User-Agent") == null) builder.header("User-Agent", DESKTOP_UA)
+        if (original.header("Origin") == null) builder.header("Origin", "https://www.youtube.com")
+        if (original.header("Referer") == null) builder.header("Referer", "https://www.youtube.com/")
+        if (original.header("Accept-Language") == null) {
+            builder.header("Accept-Language", "en-US,en;q=0.9")
+        }
+        if (original.header("X-Youtube-Client-Name") == null) {
+            builder.header("X-Youtube-Client-Name", DEFAULT_CLIENT_ID)
+        }
+        if (original.header("X-Youtube-Client-Version") == null) {
+            builder.header("X-Youtube-Client-Version", DEFAULT_CLIENT_VERSION)
+        }
+
+        chain.proceed(builder.build())
     }
 
     private val okHttp: OkHttpClient by lazy {
